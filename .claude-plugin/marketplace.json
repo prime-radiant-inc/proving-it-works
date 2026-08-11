@@ -1,0 +1,35 @@
+{
+  "name": "proving-it-works",
+  "owner": {
+    "name": "Prime Radiant, Inc.",
+    "url": "https://github.com/prime-radiant-inc"
+  },
+  "metadata": {
+    "description": "Make a movie that proves software works, and verify it before shipping",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "proving-it-works",
+      "category": "development",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/prime-radiant-inc/proving-it-works.git"
+      },
+      "description": "Record a demo, tutorial, or proof movie of software actually running \u2014 and catch the silent defects (frozen picture, narration talking over a dead screen, dropped words, invisible clicks) before you hand it to anyone",
+      "version": "0.1.0",
+      "keywords": [
+        "screencast",
+        "demo-video",
+        "tutorial",
+        "ffmpeg",
+        "playwright",
+        "narration",
+        "tts",
+        "verification",
+        "evidence"
+      ],
+      "strict": false
+    }
+  ]
+}

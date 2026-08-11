@@ -1,0 +1,12 @@
+# check-movie scratch output
+*-check/
+contact-sheet.png
+
+# media: this repo ships the method, not the movies
+*.mp4
+*.mov
+*.webm
+*.wav
+*.mp3
+
+.DS_Store
