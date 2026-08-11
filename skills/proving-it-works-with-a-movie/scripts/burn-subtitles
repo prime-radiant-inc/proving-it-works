@@ -60,9 +60,13 @@ def main():
         # ffmpeg 8 dropped positional filter options, so name it explicitly:
         # `subtitles=movie.srt` parses on 5.x and fails on 8.x, but
         # `subtitles=filename=movie.srt` works on both
+        # BorderStyle=3 draws a filled box behind the text. Outline-only
+        # subtitles are legible over a dark terminal and marginal over a
+        # white app screenshot; a demo movie cuts between both.
         style = (f"FontName={args.font},Fontsize={args.size},"
-                 f"Outline=1,Shadow=0,BorderStyle=1,MarginV={args.margin},"
-                 f"PrimaryColour=&H00FFFFFF&,OutlineColour=&H00101014&")
+                 f"BorderStyle=3,Outline=1,Shadow=0,MarginV={args.margin},"
+                 f"PrimaryColour=&H00FFFFFF&,OutlineColour=&HB0101014&,"
+                 f"BackColour=&HB0101014&")
         # run from the subtitle's directory: the filter treats ':' and '\' in
         # paths as its own syntax, and quoting around that is a losing game
         ok = run(["ffmpeg", "-nostdin", "-y", "-v", "error",
