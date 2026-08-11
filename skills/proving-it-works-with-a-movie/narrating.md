@@ -28,6 +28,28 @@ assembly step both consume, so nothing downstream has to guess timings.
 Force the choice with `--engine openai|openai-chat|piper`. `openai-chat`
 buys the best prosody and pays for it with ad-libs, so it is gated below.
 
+## The gate runs even without a key
+
+`narrate` listens back to every clip it renders and compares what it hears
+against the script. With a key it can use a cloud transcriber; without one
+it uses a local ASR (faster-whisper) in its own environment. The gate is not
+something you only get when you're online.
+
+What it measures is **missing or invented content**, not exact words, and
+that distinction is load-bearing. A small ASR mangles unusual names — ours
+came back as "Mevil studio" and "Yvel" — so exact matching cries wolf on
+good clips. Worse, a genuinely *dropped* word scores as more similar than
+two mispronounced ones, so a strict ratio would pass the real defect and
+fail the harmless one. The gate therefore flags a large length change or a
+run of consecutive words that went missing: a skipped sentence, an ad-libbed
+preamble, a clip that came out empty.
+
+It will not catch a single dropped word in a jargon-heavy line. For those,
+listen to one clip yourself when you pick the voice.
+
+Editing a line re-renders it: `narrate` records the text each clip was made
+from, and a clip whose script has changed is regenerated rather than reused.
+
 ## The verbatim gate — required
 
 Never trust the generator's own account of what it produced. Verify the

@@ -22,6 +22,7 @@ Usage:
 
 import argparse
 import base64
+import difflib
 import json
 import os
 import re
@@ -59,6 +60,47 @@ def openai_key():
 
 def norm(s):
     return re.sub(r"[^a-z0-9 ]+", "", s.lower()).split()
+
+
+ASR_SNIPPET = """
+import sys
+from faster_whisper import WhisperModel
+m = WhisperModel(sys.argv[2], device="cpu", compute_type="int8")
+segs, _ = m.transcribe(sys.argv[1])
+print(" ".join(s.text.strip() for s in segs))
+"""
+
+
+def transcribe_local(wav, model="base.en"):
+    """Transcribe with a local ASR, in its own uv env so narrate stays light.
+    Returns None when faster-whisper isn't available."""
+    try:
+        out = subprocess.run(
+            ["uv", "run", "--quiet", "--with", "faster-whisper", "python3",
+             "-c", ASR_SNIPPET, str(wav), model],
+            capture_output=True, text=True, timeout=900)
+    except Exception:  # noqa: BLE001 - no uv, no network: gate simply unavailable
+        return None
+    return out.stdout.strip() if out.returncode == 0 and out.stdout.strip() else None
+
+
+def structural_drift(text, heard):
+    """How far a transcript diverges from the script, ignoring the noise an
+    ASR always makes.
+
+    Exact word-matching is the wrong tool here: a small model mangles
+    unusual names ("smevals" -> "Mevil"), and - worse - a *dropped* word
+    scores as more similar than two mispronounced ones. What is detectable,
+    and what actually matters, is missing or invented CONTENT: a sentence
+    the voice skipped, or a preamble it invented. Returns
+    (length_delta_fraction, longest_run_of_missing_or_changed_words).
+    """
+    want, got = norm(text), norm(heard)
+    delta = abs(len(got) - len(want)) / max(1, len(want))
+    ops = difflib.SequenceMatcher(a=want, b=got).get_opcodes()
+    worst = max((i2 - i1 for tag, i1, i2, _, _ in ops if tag in ("delete", "replace")),
+                default=0)
+    return delta, worst
 
 
 def post(url, key, body, want_json=True):
@@ -116,6 +158,15 @@ def duration(path):
 
 
 def main():
+    if len(sys.argv) == 4 and sys.argv[1] == "--drift-check":
+        script = Path(sys.argv[2]).read_text()
+        heard = Path(sys.argv[3]).read_text()
+        delta, worst = structural_drift(script, heard)
+        bad = delta > 0.15 or worst >= 4
+        print(f"length change {delta:.0%}, worst run {worst} -> "
+              f"{'MISMATCH' if bad else 'ok'}")
+        return 1 if bad else 0
+
     ap = argparse.ArgumentParser()
     ap.add_argument("scenes", type=Path)
     ap.add_argument("outdir", type=Path)
@@ -123,6 +174,11 @@ def main():
                     choices=["auto", "openai", "openai-chat", "piper"])
     ap.add_argument("--voice", default=None)
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--verify", default="auto", choices=["auto", "on", "off"],
+                    help="listen back to each clip with a local ASR and flag "
+                         "missing or invented content (default: on when the "
+                         "engine can't tell you what it said)")
+    ap.add_argument("--asr-model", default="base.en")
     args = ap.parse_args()
 
     doc = yaml.safe_load(args.scenes.read_text())
@@ -139,15 +195,32 @@ def main():
             "Use --engine piper for a local voice.")
     print(f"engine: {engine}" + ("" if key or engine == "piper" else ""))
 
+    # a deterministic cloud endpoint reads exactly what you send it, so the
+    # ear-check is optional there; anything else gets listened to by default
+    verify = args.verify == "on" or (args.verify == "auto" and engine != "openai")
+
     args.outdir.mkdir(parents=True, exist_ok=True)
+    # what the cached clips were rendered FROM: editing a line and keeping
+    # its old audio is a silent lie, and the movie will contradict itself
+    prior = {}
+    prior_path = args.outdir / "manifest.json"
+    if prior_path.exists():
+        try:
+            prior = {e["id"]: e.get("text", "") for e in
+                     json.loads(prior_path.read_text())}
+        except Exception:  # noqa: BLE001 - a corrupt manifest just means no cache
+            prior = {}
     manifest, failures = [], []
 
     for sc in scenes:
         sid = sc["id"]
         text = " ".join((sc["narration"] or "").split())
         wav = args.outdir / f"{sid}.wav"
-        if wav.exists() and not args.force:
+        if wav.exists() and not args.force and prior.get(sid) == text:
             print(f"{sid}: cached")
+        elif wav.exists() and not args.force and sid in prior:
+            print(f"{sid}: text changed since this clip was rendered - redoing")
+            args.force = True
         else:
             for attempt in (1, 2):
                 if engine == "openai":
@@ -156,18 +229,37 @@ def main():
                     claimed = say_openai_chat(key, text, wav, args.voice)
                 else:
                     claimed = say_piper(text, wav, args.voice)
-                # a chat model will happily prepend "Sure, here it is:" - the
-                # only defence is diffing what it says against what you wrote
-                if claimed is None:
-                    print(f"{sid}: ok")
+
+                # a chat model reports what it said: hold it to that exactly,
+                # because "Sure, here it is:" is the failure it introduces
+                if claimed is not None:
+                    want, got = norm(text), norm(claimed)
+                    drift = abs(len(want) - len(got)) + sum(
+                        1 for a, b in zip(want, got) if a != b)
+                    if drift > max(2, len(want) // 25):
+                        print(f"{sid}: engine ad-libbed (attempt {attempt}, "
+                              f"drift {drift})")
+                        continue
+
+                # every engine: listen back. An ASR mangles unusual names, so
+                # only missing or invented CONTENT counts as a failure here.
+                if verify:
+                    heard = transcribe_local(wav, args.asr_model)
+                    if heard is None:
+                        print(f"{sid}: ok (no local ASR available - gate skipped)")
+                        break
+                    delta, worst = structural_drift(text, heard)
+                    if delta > 0.15 or worst >= 4:
+                        print(f"{sid}: what came out does not match the script "
+                              f"(attempt {attempt}: {delta:.0%} length change, "
+                              f"{worst} words in a row wrong)")
+                        print(f"       heard: {heard[:120]}")
+                        continue
+                    print(f"{sid}: ok (verified by ear: {delta:.0%} length "
+                          f"change, worst run {worst})")
                     break
-                want, got = norm(text), norm(claimed)
-                drift = abs(len(want) - len(got)) + sum(
-                    1 for a, b in zip(want, got) if a != b)
-                if drift <= max(2, len(want) // 25):
-                    print(f"{sid}: ok (drift {drift})")
-                    break
-                print(f"{sid}: transcript drifted (attempt {attempt}, drift {drift})")
+                print(f"{sid}: ok")
+                break
             else:
                 failures.append(sid)
         manifest.append({"id": sid, "text": text, "wav": wav.name,
@@ -179,6 +271,9 @@ def main():
     if engine == "piper":
         print("local voice: it mispronounces unusual names rather than dropping "
               "them - listen to one clip before you commit to a voice.")
+    if verify:
+        print("the ear-check catches missing or invented sentences, not "
+              "pronunciation: an ASR mangles jargon too.")
     if failures:
         print(f"FAILED verbatim delivery: {failures}", file=sys.stderr)
         return 1
