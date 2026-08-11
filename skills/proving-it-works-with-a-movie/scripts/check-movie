@@ -102,13 +102,18 @@ def sample_sound(movie, has_audio):
     return levels
 
 
-def contact_sheet(paths, out_path, cols=4, count=12):
+def contact_sheet(paths, out_path, count=12):
     picks = paths if len(paths) <= count else [
         paths[round(i * (len(paths) - 1) / (count - 1))] for i in range(count)]
     thumbs = [Image.open(p).convert("RGB") for p in picks]
     w, h = thumbs[0].size
-    rows = math.ceil(len(thumbs) / cols)
-    sheet = Image.new("RGB", (cols * w, rows * h), "black")
+    # pick a column count that fills the grid exactly where possible: an
+    # empty cell reads as a black *frame*, which is a defect signal, and a
+    # sheet that lies about the movie defeats the point of the sheet
+    n = len(thumbs)
+    cols = next((c for c in (4, 3, 5, 2) if n % c == 0), min(4, n))
+    rows = math.ceil(n / cols)
+    sheet = Image.new("RGB", (cols * w, rows * h), (48, 48, 52))
     for i, t in enumerate(thumbs):
         sheet.paste(t, ((i % cols) * w, (i // cols) * h))
     sheet.save(out_path)
