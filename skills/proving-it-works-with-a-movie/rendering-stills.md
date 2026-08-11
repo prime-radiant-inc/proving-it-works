@@ -16,44 +16,29 @@ screenshot per beat; no fps.
 The read-back is not optional. It is what catches a shot taken mid-scroll,
 mid-animation, or before a fetch resolved — the defect that otherwise ships.
 
-## 2. Composite cards in the browser
+## 2. Sequence the screenshots as they are
 
-Render title, caption, and end cards as HTML and screenshot them, rather
-than fighting ffmpeg `drawtext` (see assembling.md). A single param-driven
-`card.html` covers all three shapes:
+Do not composite caption bars onto the stills. Subtitles carry the words
+now (assembling.md), so a caption strip burned into each frame duplicates
+them, competes with them, and has to be re-rendered every time you reword a
+sentence. The screenshot is the evidence; leave it alone.
 
-```html
-<!doctype html><meta charset="utf-8">
-<style>
-  body { margin:0; width:1400px; height:960px; overflow:hidden;
-         font-family:Georgia,serif; background:#faf8f4; }
-  .frame { width:1400px; height:900px; display:block; }
-  .bar { width:1400px; height:60px; background:#2a2722; color:#faf8f4;
-         display:flex; align-items:center; justify-content:center; font-size:26px; }
-  .title { height:960px; display:flex; flex-direction:column;
-           align-items:center; justify-content:center; gap:24px; }
-</style>
-<body><script>
-  const q = new URLSearchParams(location.search);
-  if (q.get("mode") === "title")
-    document.body.innerHTML = '<div class="title"><h1>App</h1><p>tagline</p></div>';
-  else
-    document.body.innerHTML = '<img class="frame" src="' + q.get("img") +
-      '"><div class="bar">' + q.get("cap") + '</div>';
-</script></body>
-```
+Name the shots so a lexical glob orders them — `shot-01.png` … `shot-NN.png`
+— and let the assembly step hold each one for its narration.
 
-Screenshot each composed card to `card-NN.png`, zero-padded so a lexical
-glob orders them: `card-00` title, `card-01..NN` scenes, `card-99` end.
+A title and an end card are still worth having, and those genuinely are
+compositing: render them as HTML and screenshot them rather than fighting
+ffmpeg `drawtext` (see assembling.md). Name them `shot-00` and `shot-99` so
+the same glob picks them up in the right place.
 
-## 3. Hold each card for its narration
+## 3. Hold each shot for its narration
 
-If the movie is narrated, each card's duration is its narration clip's
+If the movie is narrated, each shot's duration is its narration clip's
 measured length (plus a short beat), not a fixed interval. This is what
 keeps a stills movie in sync by construction — the picture advances exactly
 when the sentence about it ends.
 
-Unnarrated, `-framerate 1/3` (3s per card) is a reasonable default; anything
+Unnarrated, `-framerate 1/3` (3s per shot) is a reasonable default; anything
 faster than ~2.5s is unreadable.
 
 ## 4. Gate it

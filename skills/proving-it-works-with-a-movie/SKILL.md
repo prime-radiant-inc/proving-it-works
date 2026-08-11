@@ -36,12 +36,16 @@ that quietly fakes one beat is worthless as evidence for any beat.
 # $SKILL_DIR is this skill's own directory - the "Base directory for this
 # skill" path printed when it loads. Installed as a plugin that is
 # $CLAUDE_PLUGIN_ROOT/skills/proving-it-works-with-a-movie
-"$SKILL_DIR/scripts/check-movie" MOVIE.mp4     # any nonzero exit: do not ship
+"$SKILL_DIR/scripts/narrate"        scenes.yaml narration/   # voice, gated
+"$SKILL_DIR/scripts/make-subtitles" narration/manifest.json movie.srt
+# ...assemble, burning the subtitles in (assembling.md), then:
+"$SKILL_DIR/scripts/check-movie"    movie.mp4      # nonzero exit: do not ship
 ```
 
 It samples picture and sound on one timeline and fails the movie when the
 action is crammed into the first seconds while narration keeps talking, when
-the picture never changes, or when the audio is silent. It samples the
+the picture never changes, when the audio is silent, or when a narrated
+movie has no subtitles (or subtitles that quit before the narration does). It samples the
 picture at 1 Hz, so any beat that must register — a flash, a blank frame, a
 transition — has to be held longer than a second. Then:
 
@@ -64,6 +68,7 @@ transition — has to be held longer than a second. Then:
 | A scene missing, error naming a truncated file | `ffmpeg` ate the loop's stdin (`-nostdin`) |
 | Your real data mutated | You recorded against the live tree; the movie writes |
 | Nothing visibly happens, because nothing visibly *should* | The claim is "state survived" — film the event, not the effect (recording-motion.md) |
+| A muted viewer gets nothing | Narration without subtitles. `narrate` + `make-subtitles` produce them; burn them in |
 
 ## Red flags — stop
 
@@ -72,6 +77,8 @@ transition — has to be held longer than a second. Then:
 - "The TTS returned 200" → generation is not delivery. Transcribe it.
 - "I'll note the glitch in the handover" → regenerate it instead.
 - "Close enough to demo" → you are about to hand a reviewer a frozen movie.
+- "No API key, so no narration" → `narrate` falls back to a local voice.
+- "I'll add subtitles later" → later is after someone watched it muted.
 
 ## Keep the pipeline
 

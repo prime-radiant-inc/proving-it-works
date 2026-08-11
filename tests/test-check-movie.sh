@@ -50,6 +50,26 @@ ffmpeg -nostdin -y -v error \
   -f lavfi -i "testsrc2=size=320x240:rate=10:d=12" \
   -c:v libx264 -pix_fmt yuv420p "$WORK/silent.mp4"
 
+# subtitles: one covering the whole runtime, one that gives up early
+cat > "$WORK/paced.srt" <<'SRT'
+1
+00:00:00,000 --> 00:00:07,000
+A narrated movie needs subtitles:
+plenty of people watch muted.
+
+2
+00:00:07,000 --> 00:00:14,000
+The checker treats their absence
+as a defect, not a nicety.
+
+3
+00:00:14,000 --> 00:00:21,500
+And it notices when they stop
+before the narration does.
+SRT
+head -8 "$WORK/paced.srt" > "$WORK/short.srt"
+cp "$WORK/paced.mp4" "$WORK/short.mp4"
+
 # --- assertions -----------------------------------------------------------
 check() {  # check <label> <expected-exit> <must-contain> <movie> [extra args...]
   local label="$1" want="$2" needle="$3" movie="$4"; shift 4
@@ -70,12 +90,15 @@ check() {  # check <label> <expected-exit> <must-contain> <movie> [extra args...
   pass=$((pass + 1))
 }
 
-check "front-loaded action is rejected"      1 "every visible change happens in the first" "$WORK/front-loaded.mp4"
-check "paced movie is accepted"              0 "Mechanical checks pass"                    "$WORK/paced.mp4"
-check "a still with audio is rejected"       1 "never reaches a new state"                 "$WORK/still.mp4"
-check "missing narration is rejected"        1 "no audio stream"                           "$WORK/silent.mp4"
-check "silent movie passes when unnarrated"  0 "Mechanical checks pass"                    "$WORK/silent.mp4" --no-expect-audio
-check "a contact sheet is always written"    0 "contact-sheet.png"                         "$WORK/paced.mp4"
+check "front-loaded action is rejected"       1 "every visible change happens in the first" "$WORK/front-loaded.mp4"
+check "paced + subtitles is accepted"         0 "Mechanical checks pass"                    "$WORK/paced.mp4"
+check "narrated without subtitles rejected"   1 "no subtitles"                              "$WORK/paced.mp4" --subs "$WORK/nope.srt"
+check "subtitles that stop early rejected"    1 "subtitles stop at"                         "$WORK/short.mp4"
+check "subtitle check is opt-outable"         0 "Mechanical checks pass"                    "$WORK/paced.mp4" --subs "$WORK/nope.srt" --no-expect-subtitles
+check "a still with audio is rejected"        1 "never reaches a new state"                 "$WORK/still.mp4"
+check "missing narration is rejected"         1 "no audio stream"                           "$WORK/silent.mp4"
+check "silent movie passes when unnarrated"   0 "Mechanical checks pass"                    "$WORK/silent.mp4" --no-expect-audio
+check "a contact sheet is always written"     0 "contact-sheet.png"                         "$WORK/paced.mp4"
 
 echo
 echo "$pass passed, $fail failed"

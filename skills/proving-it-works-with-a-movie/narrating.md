@@ -14,7 +14,19 @@ word your movie is about is worse than no narration.
 | OS built-ins (`say`) | Free and instant; reliably sounds robotic. Fine for a scratch timing pass, not for delivery. |
 | Cloud TTS endpoints (e.g. `/v1/audio/speech`) | Deterministic: reads exactly what you send. The safe default. |
 | Chat models with audio output | Best prosody, but they are *chat models*: they ad-lib preambles ("Sure, here it is:"). Usable only with a verbatim gate. |
-| Local neural TTS (Kokoro etc.) | Free, offline, decent — and drops out-of-vocabulary words **silently**, with a zero exit code. "Every eval on the shelf" became "every on the shelf" with no error at all. |
+| Local neural TTS, Piper | The default when no key is present: free, offline after a one-time voice download, runs on macOS and Linux. It **mispronounces** unusual names rather than dropping them (our jargon came back as "Smevel's", all 14 words intact) — the opposite of the failure below, and the safer one. |
+| Local neural TTS, Kokoro | Free and offline, but drops out-of-vocabulary words **silently**, with a zero exit code. "Every eval on the shelf" became "every on the shelf" with no error at all. |
+
+## Use the script
+
+`scripts/narrate scenes.yaml narration/` renders one clip per scene and
+picks its engine automatically: a cloud voice when a key is there, Piper
+when there isn't. It writes `manifest.json` with the exact text and the
+*measured* duration of every clip — which is what make-subtitles and the
+assembly step both consume, so nothing downstream has to guess timings.
+
+Force the choice with `--engine openai|openai-chat|piper`. `openai-chat`
+buys the best prosody and pays for it with ad-libs, so it is gated below.
 
 ## The verbatim gate — required
 

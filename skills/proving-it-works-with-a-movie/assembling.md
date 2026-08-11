@@ -55,6 +55,35 @@ ffmpeg -nostdin -y -v error -framerate 1/3 -pattern_type glob -i 'card-*.png' \
   -r 30 -pix_fmt yuv420p out.mp4      # 1/3 = each card holds 3s
 ```
 
+## Burn the subtitles in
+
+Subtitles are on by default; the checker fails a narrated movie without
+them. Burn them into the picture so they survive being dropped into Slack,
+a PR comment, or a phone — and keep the `.srt` beside the movie as the
+sidecar the checker reads (and as the searchable transcript).
+
+```bash
+scripts/make-subtitles narration/manifest.json movie.srt
+scripts/burn-subtitles silent-cut.mp4 movie.srt movie.mp4
+```
+
+Burn them at the *end*, over the assembled cut, so cue timings line up with
+the final timeline rather than per-segment offsets.
+
+Two traps the script exists to absorb:
+
+- **Burning needs libass, and many ffmpeg builds lack it.** Homebrew's
+  default macOS ffmpeg has no `subtitles` filter at all; Debian's has it.
+  `burn-subtitles` checks, and falls back to an embedded soft track with a
+  loud note rather than pretending it burned anything.
+- **ffmpeg 8 removed positional filter options.** `subtitles=movie.srt`
+  parses on 5.x and fails on 8.x with "No option name near". Write
+  `subtitles=filename=movie.srt`, which works on both.
+
+`Fontsize` is in points against the video height — check it on the contact
+sheet, because a size that reads fine at 2560px wide is unreadable when the
+movie is watched in a 400px-wide PR preview.
+
 ## Verify the encode, then verify the content
 
 ```bash
