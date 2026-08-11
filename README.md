@@ -4,6 +4,18 @@ A Claude Code plugin for making a movie that proves software actually
 works — and for catching the defects that make such movies worthless
 before you hand one to anybody.
 
+## See it work
+
+https://github.com/prime-radiant-inc/proving-it-works/raw/main/docs/demo.mp4
+
+<video src="https://github.com/prime-radiant-inc/proving-it-works/raw/main/docs/demo.mp4" controls muted playsinline width="100%"></video>
+
+A clean container installs this plugin from the public marketplace, an agent
+inside it uses the skill to make a narrated movie of a small web app, and the
+skill's own checker verifies that movie. The narration in the inner movie is a
+local voice — there is no API key in that container — and its subtitles are
+burned in. ([subtitles](docs/demo.srt), [how it was made](examples/e2e/))
+
 ## Why
 
 A movie is evidence, and every way it fails is silent. No crash, no red
@@ -23,17 +35,28 @@ the timeline check here is a script, not advice.
 
 ## What's in it
 
-A skill, `proving-it-works-with-a-movie`, that covers three routes:
+A skill, `proving-it-works-with-a-movie`, that covers four routes:
 
 | Route | For |
 |---|---|
 | Browser-driven motion | The interaction is the claim: typing, clicking, live updates |
-| Composited stills | A sequence of real states, motion optional |
+| Terminal | A CLI, a TUI, an install, a test run, an agent working |
+| Stills | A sequence of real states, motion optional |
 | Log-rendered reel | OS capture is blocked, or the thing to prove is a *run*, not a UI |
 
 ...plus the parts that go wrong regardless of route: narration verbatim
 gates, measured (never guessed) pacing, cursor visibility, ffmpeg traps, and
 recording against a copy of your data rather than the real thing.
+
+### The scripts
+
+| Script | Does |
+|---|---|
+| `narrate` | one clip per scene; a cloud voice when a key exists, a local one when it doesn't |
+| `make-subtitles` | an SRT timed to the measured clips (subtitles are the default, not a nicety) |
+| `assemble` | scenes into a cut, each segment held to max(narration, visuals) |
+| `burn-subtitles` | into the picture where libass exists, a soft track where it doesn't |
+| `check-movie` | the gate |
 
 ### `check-movie`
 

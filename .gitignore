@@ -4,6 +4,7 @@ contact-sheet.png
 
 # media: this repo ships the method, not the movies
 *.mp4
+!docs/demo.mp4
 *.mov
 *.webm
 *.wav

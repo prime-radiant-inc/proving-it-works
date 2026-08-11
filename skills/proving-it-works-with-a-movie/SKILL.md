@@ -19,6 +19,7 @@ movie.** Not the frames going in. The finished file coming out.
 | What you have to show | Route |
 |---|---|
 | Interaction happening: typing, clicking, a list updating live | Browser-driven motion → recording-motion.md |
+| A CLI, a TUI, an install, a test run, an agent working | Terminal → recording-a-terminal.md |
 | A sequence of real states, motion optional | Composited stills → rendering-stills.md |
 | OS capture blocked (wallpaper-only frames), or the thing to prove is a *run*, not a UI | Reel rendered from the run's own log → rendering-from-a-log.md |
 
@@ -37,8 +38,10 @@ that quietly fakes one beat is worthless as evidence for any beat.
 # skill" path printed when it loads. Installed as a plugin that is
 # $CLAUDE_PLUGIN_ROOT/skills/proving-it-works-with-a-movie
 "$SKILL_DIR/scripts/narrate"        scenes.yaml narration/   # voice, gated
-"$SKILL_DIR/scripts/make-subtitles" narration/manifest.json movie.srt
-# ...assemble, burning the subtitles in (assembling.md), then:
+"$SKILL_DIR/scripts/assemble"       scenes.yaml silent-cut.mp4
+"$SKILL_DIR/scripts/make-subtitles" narration/manifest.json movie.srt \
+                                    --offsets-json segments/offsets.json
+"$SKILL_DIR/scripts/burn-subtitles" silent-cut.mp4 movie.srt movie.mp4
 "$SKILL_DIR/scripts/check-movie"    movie.mp4      # nonzero exit: do not ship
 ```
 

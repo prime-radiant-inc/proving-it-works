@@ -77,16 +77,26 @@ def main():
     ap.add_argument("--offsets", nargs="*", default=[],
                     help="SCENE=SECONDS start overrides; without these, scenes "
                          "are assumed to run back to back in manifest order")
+    ap.add_argument("--offsets-json", type=Path, default=None,
+                    help="segments/offsets.json from assemble - the reliable "
+                         "way to time cues against the finished cut")
     ap.add_argument("--max-chars", type=int, default=MAX_CHARS)
     ap.add_argument("--max-secs", type=float, default=MAX_SECS)
     args = ap.parse_args()
 
     manifest = json.loads(args.manifest.read_text())
     overrides = {}
+    if args.offsets_json:
+        overrides.update({k: float(v) for k, v in
+                          json.loads(args.offsets_json.read_text()).items()})
     for spec in args.offsets:
         k, _, v = spec.partition("=")
         overrides[k] = float(v)
 
+    # a scene with no offset and no place in the cut would silently land at
+    # the wrong time; skip it rather than mistime it
+    if overrides:
+        manifest = [e for e in manifest if e["id"] in overrides]
     cues, clock = [], 0.0
     for entry in manifest:
         start = overrides.get(entry["id"], clock)

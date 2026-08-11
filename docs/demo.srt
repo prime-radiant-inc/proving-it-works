@@ -1,0 +1,83 @@
+1
+00:00:04,000 --> 00:00:07,027
+This is a container with nothing of ours
+in it.
+
+2
+00:00:07,027 --> 00:00:12,438
+Claude Code is here, and no plugins. We
+add the marketplace straight from the public
+
+3
+00:00:12,438 --> 00:00:17,785
+repo, install the plugin, and list again:
+proving it works, version zero point one,
+
+4
+00:00:17,785 --> 00:00:18,300
+enabled.
+
+5
+00:00:32,080 --> 00:00:37,384
+Now the real test. We ask Claude, inside
+that container, to use the skill it just
+
+6
+00:00:37,384 --> 00:00:41,837
+installed. Record the real page in motion
+with a cursor you can see.
+
+7
+00:00:41,837 --> 00:00:45,700
+There is no API key in here, so narrate
+with a local voice.
+
+8
+00:00:45,700 --> 00:00:47,730
+And subtitles are not optional.
+
+9
+00:00:51,230 --> 00:00:54,184
+So here is that movie, playing as itself.
+
+10
+00:00:54,184 --> 00:00:58,580
+Local voice, burned-in subtitles, and a
+cursor you can watch.
+
+11
+00:01:11,637 --> 00:01:14,799
+And here is the skill's own checker, run
+against it.
+
+12
+00:01:14,799 --> 00:01:19,908
+The picture reaches new states at the
+right cadence, the narration is there, and the
+
+13
+00:01:19,908 --> 00:01:22,280
+subtitles run to the end of the speech.
+
+14
+00:01:22,280 --> 00:01:26,476
+Mechanical checks pass — then it tells you
+the part no script can do.
+
+15
+00:01:26,476 --> 00:01:28,787
+Open the contact sheet and look at it.
+
+16
+00:01:37,887 --> 00:01:43,387
+So we do. Zero, one, two, with the cursor
+on the button and the subtitles under it.
+
+17
+00:01:43,387 --> 00:01:48,887
+The plugin installed from a public
+marketplace, the skill was read and followed, and
+
+18
+00:01:48,887 --> 00:01:50,966
+every frame is the real page.

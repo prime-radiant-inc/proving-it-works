@@ -1,0 +1,73 @@
+fps: 30
+scenes:
+  - id: title
+    kind: card
+    title: proving-it-works
+    subtitle: installed from a public marketplace, then used — in a clean container
+    duration: 4
+
+  - id: install
+    kind: frames
+    src: install
+    rate: 2.6
+    narration: >-
+      This is a container with nothing of ours in it. Claude Code is here,
+      and no plugins. We add the marketplace straight from the public repo,
+      install the plugin, and list again: proving it works, version zero
+      point one, enabled.
+
+  - id: agent
+    kind: frames
+    src: agent
+    rate: 5.0
+    narration: >-
+      Now the real test. We ask Claude, inside that container, to use the
+      skill it just installed. Record the real page in motion with a cursor
+      you can see. There is no API key in here, so narrate with a local
+      voice. And subtitles are not optional.
+
+  - id: elapsed
+    kind: card
+    title: about six minutes of real agent work
+    subtitle: it drove headless Chromium, spoke with a local voice, and burned in subtitles
+    duration: 3.5
+
+  - id: handoff
+    kind: card
+    title: the movie it made
+    subtitle: full size, its own voice, its own subtitles
+    duration: 3.2
+    narration: >-
+      So here is that movie, playing as itself. Local voice, burned-in
+      subtitles, and a cursor you can watch.
+
+  - id: movie
+    kind: movie
+    src: work/out/counter.mp4
+    height: 1000
+    gain_db: 1.5
+
+  - id: verify
+    kind: frames
+    src: verify
+    rate: 2.4
+    narration: >-
+      And here is the skill's own checker, run against it. The picture
+      reaches new states at the right cadence, the narration is there, and
+      the subtitles run to the end of the speech. Mechanical checks pass —
+      then it tells you the part no script can do. Open the contact sheet
+      and look at it.
+
+  - id: sheet
+    kind: image
+    src: work/out/hostcheck/contact-sheet.png
+    narration: >-
+      So we do. Zero, one, two, with the cursor on the button and the
+      subtitles under it. The plugin installed from a public marketplace,
+      the skill was read and followed, and every frame is the real page.
+
+  - id: end
+    kind: card
+    title: github.com/prime-radiant-inc/proving-it-works
+    subtitle: a movie is evidence — verify it before you hand it over
+    duration: 4.5
