@@ -6,15 +6,16 @@ before you hand one to anybody.
 
 ## See it work
 
-https://github.com/prime-radiant-inc/proving-it-works/raw/main/docs/demo.mp4
+![the movie the plugin made, playing inside the demo](docs/demo.gif)
 
-<video src="https://github.com/prime-radiant-inc/proving-it-works/raw/main/docs/demo.mp4" controls muted playsinline width="100%"></video>
+**▶ [Watch the full two minutes, with sound](https://github.com/prime-radiant-inc/proving-it-works/raw/main/docs/demo.mp4)**
+ · [subtitles](docs/demo.srt) · [how it was made](examples/e2e/)
 
 A clean container installs this plugin from the public marketplace, an agent
 inside it uses the skill to make a narrated movie of a small web app, and the
-skill's own checker verifies that movie. The narration in the inner movie is a
-local voice — there is no API key in that container — and its subtitles are
-burned in. ([subtitles](docs/demo.srt), [how it was made](examples/e2e/))
+skill's own checker verifies that movie. The loop above is that inner movie
+playing: real screenshots, a cursor you can watch, a local voice (there is no
+API key in that container), and subtitles burned into the picture.
 
 ## Why
 
