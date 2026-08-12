@@ -1,0 +1,20 @@
+{
+  "name": "proving-it-works-dev",
+  "interface": {
+    "displayName": "proving-it-works"
+  },
+  "plugins": [
+    {
+      "name": "proving-it-works",
+      "source": {
+        "source": "url",
+        "url": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "development"
+    }
+  ]
+}

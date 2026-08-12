@@ -94,6 +94,26 @@ That is what the contact sheet and your own eyes are for.
 The skill then activates on its own when you ask for a demo, screencast,
 tutorial, or proof video.
 
+It runs on every harness below; each one reads the same skill from `skills/`.
+
+<!-- everyharness:install:start -->
+
+| Harness | Install |
+|---|---|
+| Claude Code | see docs/install/claude-code.md |
+| Cursor | see docs/install/cursor.md |
+| Codex | see docs/install/codex.md |
+| Devin CLI | see docs/install/devin.md |
+| Kimi Code | see docs/install/kimi.md |
+| Gemini CLI | see docs/install/gemini.md |
+| OpenCode | see docs/install/opencode.md |
+| Pi | see docs/install/pi.md |
+| Hermes Agent | see docs/install/hermes.md |
+| Agent Plugins 1.0 clients | see docs/install/agent-plugins-1.0.md |
+| Factory Droid / Grok / Copilot (marketplace descriptor) | see docs/install/agents-marketplace.md |
+
+<!-- everyharness:install:end -->
+
 ## Requirements
 
 - `ffmpeg` and `ffprobe`

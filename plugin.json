@@ -1,4 +1,5 @@
 {
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "proving-it-works",
   "version": "0.1.0",
   "description": "Record a demo, tutorial, or proof movie of software actually running — and catch the silent defects (frozen picture, narration talking over a dead screen, dropped words, invisible clicks) before you hand it to anyone",
@@ -6,9 +7,9 @@
     "name": "Prime Radiant, Inc.",
     "url": "https://github.com/prime-radiant-inc"
   },
-  "license": "MIT",
-  "repository": "https://github.com/prime-radiant-inc/proving-it-works",
   "homepage": "https://github.com/prime-radiant-inc/proving-it-works",
+  "repository": "https://github.com/prime-radiant-inc/proving-it-works",
+  "license": "MIT",
   "keywords": [
     "screencast",
     "demo-video",

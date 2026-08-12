@@ -6,9 +6,9 @@
     "name": "Prime Radiant, Inc.",
     "url": "https://github.com/prime-radiant-inc"
   },
-  "license": "MIT",
-  "repository": "https://github.com/prime-radiant-inc/proving-it-works",
   "homepage": "https://github.com/prime-radiant-inc/proving-it-works",
+  "repository": "https://github.com/prime-radiant-inc/proving-it-works",
+  "license": "MIT",
   "keywords": [
     "screencast",
     "demo-video",

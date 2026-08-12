@@ -1,14 +1,15 @@
 {
   "name": "proving-it-works",
-  "version": "0.1.0",
+  "displayName": "proving-it-works",
   "description": "Record a demo, tutorial, or proof movie of software actually running — and catch the silent defects (frozen picture, narration talking over a dead screen, dropped words, invisible clicks) before you hand it to anyone",
+  "version": "0.1.0",
   "author": {
     "name": "Prime Radiant, Inc.",
     "url": "https://github.com/prime-radiant-inc"
   },
-  "license": "MIT",
-  "repository": "https://github.com/prime-radiant-inc/proving-it-works",
   "homepage": "https://github.com/prime-radiant-inc/proving-it-works",
+  "repository": "https://github.com/prime-radiant-inc/proving-it-works",
+  "license": "MIT",
   "keywords": [
     "screencast",
     "demo-video",
@@ -19,5 +20,6 @@
     "tts",
     "verification",
     "evidence"
-  ]
+  ],
+  "skills": "./skills/"
 }

@@ -1,0 +1,45 @@
+name: proving-it-works
+version: 0.1.0
+description: Record a demo, tutorial, or proof movie of software actually
+  running — and catch the silent defects (frozen picture, narration talking over
+  a dead screen, dropped words, invisible clicks) before you hand it to anyone
+author:
+  name: Prime Radiant, Inc.
+  url: https://github.com/prime-radiant-inc
+license: MIT
+repository: https://github.com/prime-radiant-inc/proving-it-works
+homepage: https://github.com/prime-radiant-inc/proving-it-works
+keywords:
+  - screencast
+  - demo-video
+  - tutorial
+  - ffmpeg
+  - playwright
+  - narration
+  - tts
+  - verification
+  - evidence
+# Every harness everyharness targets discovers skills natively, and this plugin
+# ships one skill whose description already says when to invoke it. A
+# session-start injection would buy nothing and cost context in every session.
+bootstrap:
+  none: true
+
+# This repo distributes itself: the descriptor is what the public installs from,
+# so it keeps its own name and points at the repository rather than at ./.
+marketplace:
+  name: proving-it-works
+  description: Make a movie that proves software works, and verify it before shipping
+  source: repository
+  category: development
+  strict: false
+  tags:
+    - screencast
+    - demo-video
+    - tutorial
+    - ffmpeg
+    - playwright
+    - narration
+    - tts
+    - verification
+    - evidence
