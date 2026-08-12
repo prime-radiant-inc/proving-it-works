@@ -22,8 +22,7 @@ keywords:
 # Every harness everyharness targets discovers skills natively, and this plugin
 # ships one skill whose description already says when to invoke it. A
 # session-start injection would buy nothing and cost context in every session.
-bootstrap:
-  none: true
+bootstrap: none
 
 # This repo distributes itself: the descriptor is what the public installs from,
 # so it keeps its own name and points at the repository rather than at ./.

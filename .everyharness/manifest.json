@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "tool": "everyharness@0.6.0",
+  "tool": "everyharness@0.7.0",
   "files": {
     ".agents/plugins/marketplace.json": {
       "sha256": "7531715a04f5612f4efc9c898df6485fd6066b3303d948924ef64b4da162b7b2"
