@@ -28,12 +28,14 @@ import argparse
 import array
 import json
 import math
+import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 from PIL import Image
+from media_paths import sequence_pattern
 
 THUMB_W = 320          # sampling width; the metric is a pixel fraction, so scale-free
 PIXEL_DELTA = 8        # per-pixel grey delta that counts as "this pixel moved"
@@ -63,8 +65,9 @@ def sample_picture(movie, workdir):
         old.unlink()
     out = subprocess.run(
         ["ffmpeg", "-nostdin", "-v", "error", "-i", str(movie),
-         "-vf", f"fps=1,scale={THUMB_W}:-1", "-f", "image2", str(frames / "s%05d.png")],
-        capture_output=True, text=True)
+         "-vf", f"fps=1,scale={THUMB_W}:-1", "-f", "image2",
+         sequence_pattern(frames, "s%05d.png")],
+        capture_output=True, text=True, encoding="utf-8", errors="replace")
     if out.returncode != 0:
         die(f"frame sampling failed: {out.stderr.strip()[:200]}")
     paths = sorted(frames.glob("s*.png"))
@@ -121,7 +124,28 @@ def contact_sheet(paths, out_path, count=12):
     return [paths.index(p) for p in picks]
 
 
+def subtitle_end(text):
+    """Return the last SRT cue's end time, or None when there are no cues."""
+    ends = []
+    timestamp = r"(\d{2,}):([0-5]\d):([0-5]\d),(\d{3})"
+    for block in re.split(r"\n\s*\n", text.strip()):
+        if not block:
+            continue
+        lines = block.splitlines()
+        if len(lines) < 2 or not lines[0].strip().isdigit():
+            raise ValueError("malformed SRT cue index or missing timing line")
+        timing = re.fullmatch(rf"{timestamp}\s+-->\s+{timestamp}", lines[1].strip())
+        if timing is None:
+            raise ValueError(f"malformed SRT cue timing: {lines[1]}")
+        hh, mm, ss, ms = map(int, timing.groups()[4:])
+        ends.append(hh * 3600 + mm * 60 + ss + ms / 1000)
+    return max(ends, default=None)
+
+
 def main():
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="backslashreplace")
     ap = argparse.ArgumentParser()
     ap.add_argument("movie", type=Path)
     ap.add_argument("--out", type=Path, default=None)
@@ -146,7 +170,7 @@ def main():
     meta = subprocess.run(
         ["ffprobe", "-v", "error", "-print_format", "json",
          "-show_format", "-show_streams", str(args.movie)],
-        capture_output=True, text=True)
+        capture_output=True, text=True, encoding="utf-8", errors="replace")
     if meta.returncode != 0:
         die(f"ffprobe failed: {meta.stderr.strip()[:200]}")
     info = json.loads(meta.stdout)
@@ -177,40 +201,48 @@ def main():
         failures.append(f"duration is {duration:.2f}s - that is not a movie")
     if args.expect_audio and not as_:
         failures.append("expected narration but there is no audio stream")
-    if levels and not talking:
+    if args.expect_audio and levels and not talking:
         failures.append("the audio track is silent end to end")
 
     # a narrated movie with no subtitles fails for everyone watching it muted
-    if as_ and args.expect_subs:
+    if talking and args.expect_subs:
         srt = args.subs or args.movie.with_suffix(".srt")
         embedded = any(s["codec_type"] == "subtitle" for s in info["streams"])
+        subtitle_text, source = None, srt.name
         if srt.exists():
-            last = 0.0
-            for line in srt.read_text(errors="replace").splitlines():
-                if "-->" in line:
-                    end = line.split("-->")[1].strip().split()[0]
-                    hh, mm, rest = end.split(":")
-                    ss, _, ms = rest.partition(",")
-                    last = max(last, int(hh) * 3600 + int(mm) * 60 + int(ss)
-                               + int(ms or 0) / 1000)
-            # compare against where the narration ends, not the runtime: a
-            # silent end card is normal and must not read as missing subtitles
-            speech_end = float(last_talk + 1) if last_talk is not None else duration
-            print(f"subtitles   {srt.name}, last cue ends at {last:.1f}s "
-                  f"(narration ends {speech_end:.0f}s)")
-            if last < speech_end - 3.0:
-                failures.append(
-                    f"subtitles stop at {last:.0f}s but the narration runs to "
-                    f"{speech_end:.0f}s - {speech_end - last:.0f}s of speech "
-                    f"has no subtitles")
+            subtitle_text = srt.read_text(encoding="utf-8-sig", errors="replace")
         elif embedded:
-            print("subtitles   embedded subtitle stream present")
+            extracted = subprocess.run(
+                ["ffmpeg", "-nostdin", "-v", "error", "-i", str(args.movie),
+                 "-map", "0:s:0", "-f", "srt", "-"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace")
+            if extracted.returncode != 0:
+                die(f"embedded subtitle extraction failed: {extracted.stderr.strip()[:200]}")
+            subtitle_text, source = extracted.stdout, "embedded"
         else:
             failures.append(
                 f"narrated, but no subtitles: expected {srt.name} beside the "
                 f"movie (or an embedded track). Run make-subtitles and burn "
                 f"them in; pass --no-expect-subtitles only for a movie nobody "
                 f"will ever watch muted.")
+        if subtitle_text is not None:
+            try:
+                last = subtitle_end(subtitle_text)
+            except (ValueError, IndexError):
+                die(f"invalid subtitle timing in {source}")
+            # compare against where the narration ends, not the runtime: a
+            # silent end card is normal and must not read as missing subtitles
+            speech_end = float(last_talk + 1)
+            if last is None:
+                failures.append(f"{source}: subtitles contain no cues")
+            else:
+                print(f"subtitles   {source}, last cue ends at {last:.1f}s "
+                      f"(narration ends {speech_end:.0f}s)")
+                if last < speech_end - 3.0:
+                    failures.append(
+                        f"subtitles stop at {last:.0f}s but the narration runs to "
+                        f"{speech_end:.0f}s - {speech_end - last:.0f}s of speech "
+                        f"has no subtitles")
     if not changes:
         failures.append("the picture never reaches a new state - this is a still, "
                         "not a movie")
@@ -246,7 +278,7 @@ def main():
         (workdir / "check.json").write_text(json.dumps(
             {"duration": duration, "change_seconds": changes,
              "talk_seconds": talking, "failures": failures,
-             "warnings": warnings}, indent=2))
+             "warnings": warnings}, indent=2), encoding="utf-8")
 
     if failures:
         print("\nNOT SHIPPABLE. Fix, regenerate, re-run.")
