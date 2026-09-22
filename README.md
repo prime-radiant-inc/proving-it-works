@@ -125,11 +125,15 @@ It runs on every harness below; each one reads the same skill from `skills/`.
 ## Tests
 
 ```
-tests/test-check-movie.sh
+uv run --script tests/proving-it-works-with-a-movie/run-tests.py --suite all
 ```
 
 Synthesizes movies with known defects via ffmpeg's lavfi sources and asserts
-the checker's verdict on each. No fixtures committed, nothing downloaded.
+each tool's verdict on them, plus contract tests for narration acceptance,
+subtitle timing, and the terminal recorder's lifecycle. No fixtures
+committed, nothing downloaded except on first run (Python deps, the ASR
+model). See `tests/proving-it-works-with-a-movie/README.md` for individual
+suites.
 
 ## Credits
 
