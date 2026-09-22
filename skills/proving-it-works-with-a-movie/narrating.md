@@ -19,7 +19,7 @@ word your movie is about is worse than no narration.
 
 ## Use the script
 
-`scripts/narrate scenes.yaml narration/` renders one clip per scene and
+`scripts/narrate scenes.yaml narration/ --verify on` renders one clip per scene and
 picks its engine automatically: a cloud voice when a key is there, Piper
 when there isn't. It writes `manifest.json` with the exact text and the
 *measured* duration of every clip — which is what make-subtitles and the
@@ -30,10 +30,22 @@ buys the best prosody and pays for it with ad-libs, so it is gated below.
 
 ## The gate runs even without a key
 
-`narrate` listens back to every clip it renders and compares what it hears
-against the script. With a key it can use a cloud transcriber; without one
-it uses a local ASR (faster-whisper) in its own environment. The gate is not
-something you only get when you're online.
+`narrate --verify on` transcribes every clip, including cached clips, with
+local faster-whisper in its own environment and compares the result against
+the script. It needs no API key. Missing or failed transcription is a failure;
+the first run needs network access to download dependencies and the ASR model.
+
+| Mode | Local transcription behavior |
+|---|---|
+| `--verify on` | Required for every engine. Unavailable ASR or detected drift returns nonzero and excludes the failed clip from the manifest. Use this for the gated workflow above. |
+| `--verify auto` (CLI default) | Tries ASR for Piper and `openai-chat`; reports unavailable ASR but allows the clip. Skips ASR for `openai`. Detected drift still fails. |
+| `--verify off` | Skips ASR. |
+
+For `openai-chat`, word-comparison support is mandatory in every ASR mode,
+including cache reuse. During synthesis its returned transcript must contain
+speech and pass that comparison; an unsupported script also withdraws cached
+acceptance before reuse. `--verify off` bypasses only local ASR. The returned
+transcript still does not prove what the WAV contains.
 
 What it measures is **missing or invented content**, not exact words, and
 that distinction is load-bearing. A small ASR mangles unusual names — ours
@@ -47,8 +59,16 @@ preamble, a clip that came out empty.
 It will not catch a single dropped word in a jargon-heavy line. For those,
 listen to one clip yourself when you pick the voice.
 
-Editing a line re-renders it: `narrate` records the text each clip was made
-from, and a clip whose script has changed is regenerated rather than reused.
+`narrate` records each clip's text, engine, voice, and synthesis model.
+Changing any of these re-renders the clip. Clips without recorded synthesis
+settings also re-render; an unchanged clip can be reused and still receives
+any requested ASR verification.
+
+A newly synthesized clip gets at most two attempts when synthesis or a
+supported transcript/ASR comparison fails. A cached clip is checked once; if
+rejected, its manifest acceptance is withdrawn and a later invocation can
+synthesize a replacement. Failed candidate files remain as evidence rather
+than being deleted to make a retry appear clean.
 
 ## The verbatim gate — required
 
@@ -88,3 +108,13 @@ Check the sample for your own jargon before committing to a voice. If a good
 voice mangles one term, spell it phonetically **in the TTS input only**
 ("S M evals"), never in the script file a human reads. Keep that
 substitution in the narrate step so the source text stays clean.
+
+## Native Windows local voice
+
+Use `--engine piper --verify on` with the commands in assembling.md. The
+first run downloads the Piper voice and the transcription model; later runs
+reuse those caches. `--verify on` transcribes every clip, including cached
+WAVs from an earlier run, and treats an unavailable transcriber as a failure
+rather than a pass. Afterwards, transcribe the finished movie's audio and
+compare each narrated interval with its script. A `kind: movie` segment
+keeps its own sound and is checked against its source, not a script.

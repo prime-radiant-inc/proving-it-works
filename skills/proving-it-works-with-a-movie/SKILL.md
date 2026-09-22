@@ -33,17 +33,30 @@ that quietly fakes one beat is worthless as evidence for any beat.
 
 ## The gate — every route, before you hand anything over
 
+On native Windows, use the complete PowerShell or Git Bash sequence in
+assembling.md and the native example in recording-a-terminal.md. Invoke all
+five tools with `uv run --script`; Windows does not execute their Unix shebangs.
+
+The Unix sequence:
+
 ```bash
+set -euo pipefail
 # $SKILL_DIR is this skill's own directory - the "Base directory for this
 # skill" path printed when it loads. Installed as a plugin that is
 # $CLAUDE_PLUGIN_ROOT/skills/proving-it-works-with-a-movie
-"$SKILL_DIR/scripts/narrate"        scenes.yaml narration/   # voice, gated
+"$SKILL_DIR/scripts/narrate"        scenes.yaml narration/ --verify on
 "$SKILL_DIR/scripts/assemble"       scenes.yaml silent-cut.mp4
 "$SKILL_DIR/scripts/make-subtitles" narration/manifest.json movie.srt \
                                     --offsets-json segments/offsets.json
 "$SKILL_DIR/scripts/burn-subtitles" silent-cut.mp4 movie.srt movie.mp4
 "$SKILL_DIR/scripts/check-movie"    movie.mp4      # nonzero exit: do not ship
 ```
+
+For each current narrated non-movie scene, downstream tools accept only a
+manifest entry whose text matches after collapsing whitespace while preserving
+case and punctuation, and whose WAV path is relative to the narration directory.
+`kind: movie` scenes retain their source audio and receive no narration offset,
+even if the scene contains a `narration` field.
 
 It samples picture and sound on one timeline and fails the movie when the
 action is crammed into the first seconds while narration keeps talking, when
