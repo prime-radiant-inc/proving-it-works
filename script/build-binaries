@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Build the five release binaries of movie, reproducibly.
+#
+# When: before merging to main (commit the result), and from the freshness
+# test, which builds into a temporary OUTDIR and compares bytes.
+#
+# Usage: script/build-binaries [OUTDIR]
+#   OUTDIR defaults to skills/proving-it-works-with-a-movie/bin.
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd)
+out=${1:-$root/skills/proving-it-works-with-a-movie/bin}
+
+# The toolchain line wins; go mod tidy drops it when it equals the go line,
+# so fall back to the go line, which must carry a full patch version.
+version=$(awk '$1 == "toolchain" { sub(/^go/, "", $2); print $2; exit }' "$root/go.mod")
+if [[ -z $version ]]; then
+  version=$(awk '$1 == "go" { print $2; exit }' "$root/go.mod")
+fi
+if [[ ! $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "build-binaries: go.mod must name a full Go version such as 'go 1.26.1'; found '$version'" >&2
+  exit 2
+fi
+
+mkdir -p "$out"
+for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64; do
+  goos=${target%/*}
+  goarch=${target#*/}
+  name=movie-$goos-$goarch
+  [[ $goos == windows ]] && name+=.exe
+  (cd "$root" && GOTOOLCHAIN=go$version GOOS=$goos GOARCH=$goarch GOAMD64=v1 GOARM64=v8.0 \
+    CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags "-s -w" -o "$out/$name" ./cmd/movie)
+  echo "built $name"
+done

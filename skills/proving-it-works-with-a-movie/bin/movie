@@ -1,0 +1,21 @@
+#!/bin/sh
+# Run the movie binary built for this machine; arguments pass through untouched.
+here=$(cd "$(dirname "$0")" && pwd)
+case "$(uname -s)" in
+  Darwin) os=darwin ;;
+  Linux) os=linux ;;
+  MINGW*|MSYS*|CYGWIN*)
+    # Git Bash rewrites Unix-looking arguments for native programs; stop it.
+    # Pass paths in Windows form (cygpath -m) instead.
+    MSYS_NO_PATHCONV=1
+    MSYS2_ARG_CONV_EXCL='*'
+    export MSYS_NO_PATHCONV MSYS2_ARG_CONV_EXCL
+    exec "$here/movie-windows-amd64.exe" "$@" ;;
+  *) echo "movie: unsupported system $(uname -s)" >&2; exit 2 ;;
+esac
+case "$(uname -m)" in
+  x86_64|amd64) arch=amd64 ;;
+  arm64|aarch64) arch=arm64 ;;
+  *) echo "movie: unsupported machine $(uname -m)" >&2; exit 2 ;;
+esac
+exec "$here/movie-$os-$arch" "$@"
