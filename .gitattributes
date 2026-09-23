@@ -1,0 +1,6 @@
+*.go text eol=lf
+go.mod text eol=lf
+go.sum text eol=lf
+*.ttf binary
+skills/proving-it-works-with-a-movie/bin/movie text eol=lf
+skills/proving-it-works-with-a-movie/bin/movie-* binary

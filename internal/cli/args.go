@@ -1,0 +1,44 @@
+// Package cli holds the argument parsing every movie subcommand shares.
+package cli
+
+import (
+	"flag"
+	"fmt"
+	"strconv"
+	"strings"
+)
+
+// Parse parses flags that may appear before, between, or after positional
+// arguments and returns the positional arguments in order. A "--" ends flag
+// parsing: everything after it is positional.
+func Parse(fs *flag.FlagSet, args []string) ([]string, error) {
+	var positional []string
+	for {
+		if err := fs.Parse(args); err != nil {
+			return nil, err
+		}
+		rest := fs.Args()
+		if len(rest) == 0 {
+			return positional, nil
+		}
+		if len(args) > len(rest) && args[len(args)-len(rest)-1] == "--" {
+			return append(positional, rest...), nil
+		}
+		positional = append(positional, rest[0])
+		args = rest[1:]
+	}
+}
+
+// ParseSize reads a size written WxH, such as 1920x1080 or 120x34.
+func ParseSize(s string) (int, int, error) {
+	w, h, ok := strings.Cut(s, "x")
+	if !ok {
+		return 0, 0, fmt.Errorf("size %q is not WxH", s)
+	}
+	width, err1 := strconv.Atoi(w)
+	height, err2 := strconv.Atoi(h)
+	if err1 != nil || err2 != nil || width <= 0 || height <= 0 {
+		return 0, 0, fmt.Errorf("size %q is not two positive whole numbers", s)
+	}
+	return width, height, nil
+}

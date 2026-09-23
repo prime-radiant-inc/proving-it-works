@@ -13,3 +13,6 @@ contact-sheet.png
 .DS_Store
 
 __pycache__/
+
+# movie build scratch
+*.build/
