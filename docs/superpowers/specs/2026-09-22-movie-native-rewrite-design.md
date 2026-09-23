@@ -1,22 +1,28 @@
 # `movie`: a native rewrite of the proving-it-works tools
 
 Date: 2026-09-23
-Status: design, simplified after two adversarial reviews, awaiting review
+Status: design, awaiting review
 
 ## Goal
 
 A simple set of tools any agent can use to make a movie proving that
-something works. Every feature below earns its place against that goal;
-anything that only adds configuration or polish is out.
+something works. Every feature earns its place against that goal.
+
+**What is code and what is instructions.** Code is for work an agent gets
+wrong silently and repeatedly, or arithmetic it cannot do by eye: judging a
+finished movie's timeline, timing a cut to measured narration, and filming a
+terminal. Everything an agent can do correctly after reading a clear
+paragraph stays in the skill as instructions: driving a browser, capturing a
+desktop window, rendering a reel from a log, and composing stills.
 
 ## Why rewrite
 
 The pipeline today is five Python scripts the agent must run in order with
 matching flags, handing state through three files each tool reads its own
-way. There is no shared core, the scene file is never validated, the browser
-route has no tool, the terminal route is a prose recipe on Unix and a
-632-line daemon on Windows, and a third of the docs are PowerShell and Git
-Bash copies of the pipeline because `uv` shebangs do not run on Windows.
+way. There is no shared core, the scene file is never validated, the
+terminal route is a prose recipe on Unix and a 632-line daemon on Windows,
+and a third of the docs are PowerShell and Git Bash copies of the pipeline
+because `uv` shebangs do not run on Windows.
 
 ## Decisions
 
@@ -27,8 +33,8 @@ Bash copies of the pipeline because `uv` shebangs do not run on Windows.
 | Speech recognition | None. |
 | Engines | `openai`, `openai-chat`, `piper`. |
 | Scene file | New format, no backward compatibility. |
-| Terminal | The binary owns the pty and serves its own xterm.js page, gated on a Windows ConPTY spike. |
-| `browse` | Built last, from its own design. |
+| Terminal | Code: run a scripted session in a pty, record the output, render frames offline. No browser. Gated on a spike. |
+| Browser apps, desktop capture, log reels, stills | Instructions in the skill, not code. |
 
 ## Commands
 
@@ -36,12 +42,11 @@ Bash copies of the pipeline because `uv` shebangs do not run on Windows.
 |---|---|
 | `movie build SCENES.yaml OUT.mp4` | narrate, assemble, subtitle, burn, check |
 | `movie check MOVIE` | the gate, on any movie |
-| `movie term serve / run / key / watch / close` | film a real shell |
-| `movie browse ...` | film a web app (later) |
+| `movie term SCRIPT.yaml OUTDIR` | film a scripted terminal session into frames |
 
-Exit codes for every command: 0 success; 1 negative verdict (not
-shippable, narration rejected, filmed command failed); 2 usage or environment
-error; 3 `term` only, the filmed command is still running.
+Exit codes: 0 success; 1 negative verdict (not shippable, narration
+rejected, a filmed command failed or timed out); 2 usage or environment
+error.
 
 ## Layout and shipping
 
@@ -52,8 +57,7 @@ internal/ffmpeg/            run ffmpeg/ffprobe
 internal/narrate/           engines, clip cache, openai-chat gate
 internal/build/             segments, cards, concat, subtitles, burn
 internal/check/             sampling and the verdict
-internal/term/              pty session, page, keys, frames
-internal/chrome/            find and drive Chrome (term, browse)
+internal/term/              pty session, recording, emulator, renderer
 skills/proving-it-works-with-a-movie/bin/
     movie                   sh launcher (macOS, Linux, Git Bash)
     movie-darwin-arm64  movie-darwin-amd64  movie-linux-amd64
@@ -62,12 +66,12 @@ script/build-binaries
 ```
 
 Decisions are pure functions over plain data (the check verdict, cue timing,
-the openai-chat gate, scene validation, key encoding, the frame scheduler),
-tested directly with no mocks.
+the openai-chat gate, scene and script validation, key encoding, frame
+timing, idle-gap handling), tested directly with no mocks.
 
 **Launcher.** `bin/movie` maps `uname` to a binary and `exec`s it with
 `"$@"`. On Git Bash (`MINGW*`/`MSYS*`/`CYGWIN*`) it first exports
-`MSYS_NO_PATHCONV=1` and `MSYS2_ARG_CONV_EXCL='*'`, so Git Bash does not
+`MSYS_NO_PATHCONV=1` and `MSYS2_ARG_CONV_EXCL='*'` so Git Bash does not
 rewrite Unix-looking arguments; paths from Git Bash are passed in Windows
 form (`cygpath -m`). PowerShell runs the `.exe` directly. No `.cmd`
 launcher, because cmd.exe mangles arguments.
@@ -79,11 +83,11 @@ the exact version in `go.mod`'s `toolchain` line, `GOAMD64=v1`,
 binary. A test rebuilds all five and byte-compares them with the committed
 ones. Binaries are committed with the source change that alters them.
 
-**Prerequisites.** ffmpeg and ffprobe. Chrome, Chromium, or Edge for `term`
-and `browse` only. For the keyless voice, Piper (`uv tool install
-piper-tts`) and a voice (`uvx --from piper-tts python -m
+**Prerequisites.** ffmpeg and ffprobe. For the keyless voice, Piper
+(`uv tool install piper-tts`) and a voice (`uvx --from piper-tts python -m
 piper.download_voices --data-dir DIR VOICE`); the tool never runs these, and
-a missing one is an error naming the command.
+a missing one is an error naming the command. The tool needs no browser;
+filming a browser app uses whatever browser automation the agent has.
 
 ## The scene file
 
@@ -101,7 +105,7 @@ scenes:
 
   - id: install
     frames: install/         # directory of PNGs, lexical order
-    rate: 2.6
+    rate: 10
     narration: This is a container with nothing of ours in it.
 
   - id: sheet
@@ -150,11 +154,11 @@ narrated), and `demo-check/contact-sheet.png`, and keeps scratch in
    lasting max(narration, visuals): short video freezes its last frame,
    short audio pads with silence. Frames are piped to ffmpeg's stdin
    (`image2pipe`), so no user path appears inside a pattern. Cards are drawn
-   in Go with the embedded Go fonts (title and subtitle, centered, wrapped)
-   to a PNG, so `build` needs no browser. `movie` scenes are scaled to fit
-   and keep their own audio, with a silent track added if they have none.
-   Segments are concatenated with a list of their fixed safe names, run from
-   the scratch directory, so nothing needs escaping.
+   in Go with the embedded Go fonts (title and subtitle, centered, wrapped).
+   `movie` scenes are scaled to fit and keep their own audio, with a silent
+   track added if they have none. Segments are concatenated from a list of
+   their fixed safe names, run from the scratch directory, so nothing needs
+   escaping.
 4. **Subtitle**, only if anything is narrated: cues timed inside each
    narrated scene's measured interval at its offset in the cut (today's
    millisecond allocation), written to `demo.srt`.
@@ -195,68 +199,121 @@ are required only when speech is heard, as today.
 
 ## `term`
 
-**Spike first**, on real Windows with go-pty: spawn PowerShell 5.1,
-PowerShell 7, and Git Bash with the prompt installed at launch; write input,
-read output, resize; check whether Git Bash loses its first input; check
-that the page's query replies do not double up with ConPTY's own. On the e2e
-image, check a `docker exec` wrapped session. If the pty route fails, this
-section becomes a port of today's ttyd route before planning.
+Record, then render. One process runs a scripted session in a real pty,
+records every byte the shell writes with its timestamp, and afterwards
+replays that recording through a terminal emulator and draws frames. No
+browser, no daemon, no session files, and no screenshot lag: the frames
+show exactly what the terminal showed, when it showed it.
 
-`movie term serve SESSION --shell bash|powershell|pwsh [--shell-exe PATH]
-[--cwd DIR] [--browser PATH] [-- WRAPPER...]` runs in the foreground as a
-background task. It:
+### Spike first
 
-1. serves a page on 127.0.0.1 with vendored xterm.js at 1600×900, 17 px,
-   loads it in headless Chrome (software GL), and reads the columns and rows
-   xterm.js lays out;
-2. spawns the shell in a pty of that size, always clean, with a status
-   prompt that reports sequence number, success, exit code, and cwd in an
-   OSC title sequence:
-   - bash: `bash --noprofile --norc -i` with `PROMPT_COMMAND` and `PS1` in
-     its environment; the prompt captures `$?`, then `export -n
-     PROMPT_COMMAND` so nested shells do not inherit it (verified on bash
-     3.2);
-   - PowerShell: `-NoLogo -NoProfile -NoExit -EncodedCommand <prompt
-     script>`;
-   - on Windows, `bash` means Git Bash, found under `ProgramFiles`,
-     `ProgramW6432`, or `LOCALAPPDATA\Programs`, never on PATH (which may
-     hold WSL's); `--shell-exe` overrides;
-   - the launcher's `MSYS_*` variables are removed from the shell's
-     environment;
-3. relays the pty both ways over a websocket, so xterm.js can answer the
-   terminal queries programs send; the page, websocket, and control endpoint
-   require a random token and check the Origin;
-4. runs today's preflight (refuse a blank canvas, save `ready.png`);
-5. writes `SESSION/session.json` (control address and token) and prints
-   `{"ready": true}`.
+Two questions decide whether this works, and the spike answers both before
+planning:
 
-With `-- WRAPPER...` (bash only), the wrapper is a prefix such as
-`docker exec -it CONTAINER`, and `serve` appends
-`env PROMPT_COMMAND=... PS1=... bash --noprofile --norc -i`, so Chrome and
-the binary stay on the host. It works with wrappers that pass arguments
-through unchanged; ssh is not supported.
+1. **Emulator fidelity.** Replay recordings of real sessions through a Go
+   terminal emulator (`charmbracelet/x/vt`, else `hinshun/vt10x`) and render
+   them: a plain shell, colours, a full-screen TUI (`htop` or `less`), and a
+   Claude Code session. The frames must be indistinguishable in content from
+   a real terminal. The emulator must also answer the cursor-position and
+   device-attribute queries programs send, or those programs stall.
+2. **Windows.** With go-pty on real Windows, spawn PowerShell 5.1,
+   PowerShell 7, and Git Bash with the status prompt installed at launch;
+   write input and read output; check whether Git Bash loses its first
+   input and whether ConPTY's own query handling interferes.
 
-`run SESSION 'cmd' [--record DIR] [--seconds N] [--hold S]` refuses unless
-the shell is at a prompt, writes the command and Enter to the pty, and films
-at 5 fps until the next prompt plus the hold (1.5 s), or `--seconds`.
-`key SESSION NAME` takes `Enter`, `Escape`, `Tab`, the four arrows,
-`Ctrl-C`, or one character, and encodes arrows by the cursor-key mode read
-from xterm.js. `watch` films without input. Each waits up to 30 s for the
-session to become ready, prints JSON (`outcome`, `ok`, `exit_code`, `cwd`,
-frame count), and writes `take.json` with a ready-to-paste `frames` scene.
-Record directories must be new or empty. A slow screenshot repeats the
-previous frame so a take plays at exactly 5 fps.
+It also checks a `docker exec` wrapped session on the e2e image. If
+fidelity fails, the fallback is today's approach (xterm.js in headless
+Chrome) and the spec is revised before planning.
 
-`close` asks `serve` to exit; it kills the process trees it started (Unix:
-descendants; Windows: `taskkill /T /F`), using handles it holds, never PIDs
-from files, and exits 1 if it cannot confirm cleanup. Processes a wrapper
-started on the other side (inside a container) are not its to kill.
+### The script
 
-## `browse`
+```yaml
+shell: bash                  # bash | powershell | pwsh; default bash
+cwd: work/                   # default: the script's directory
+size: 120x34                 # columns x rows; default 120x34
+wrap: [docker, exec, -it, provdemo]   # optional, bash only
 
-Built last, from its own design. Outline: scene actions (`goto`, `wait_for`,
-`click`, `type`, `pause`), a built-in cursor overlay, human-paced typing,
-screenshots raced against a short timeout, output a `frames` directory.
+steps:
+  - run: claude plugin list
+  - pause: 2
+  - run: claude plugin install proving-it-works
+    timeout: 120
+  - run: claude -p "make the movie"
+    film: false              # happens, but off camera
+    timeout: 900
+  - run: ls -la out/
+  - key: q
+```
+
+| Step | Does |
+|---|---|
+| `run: CMD` | wait for the prompt, type `CMD` at human pace, press Enter, wait for the next prompt (up to `timeout`, default 60 s) |
+| `key: NAME` | press `Enter`, `Escape`, `Tab`, an arrow, `Ctrl-C`, or one character; arrows follow the terminal's cursor-key mode |
+| `pause: SECONDS` | hold |
+| `wait: SECONDS` | wait for output to go quiet for that long, for TUIs with no prompt to wait for |
+
+Any step can carry `film: false`. A `run` whose command fails, or that
+times out, stops the script with exit 1 unless it has `may_fail: true`.
+Typing only ever happens at a prompt, so keys cannot land in a running
+program's stdin.
+
+### Output
+
+`movie term demo-install.yaml takes/install` writes:
+
+- `takes/install/take-1/`, `take-2/`, ...: one PNG directory per stretch of
+  filmed steps (a `film: false` step ends one take and the next filmed step
+  starts another), rendered at 10 fps, each with a `take.json` holding a
+  ready-to-paste `frames` scene;
+- `takes/install/session.log`: the raw recording, with timestamps, for
+  re-rendering or inspection;
+- a one-line summary per step on stdout: command, exit code, duration.
+
+Frames are 1600×900 by default (`--px WxH`), drawn with an embedded
+monospace font with wide glyph coverage (DejaVu Sans Mono, under its
+permissive license). Output quiet for more than 3 s inside a filmed take is
+shortened to 3 s, so a slow step does not become dead air; the step summary
+reports the real durations.
+
+### The shell
+
+The shell always starts clean, with a status prompt installed at launch that
+reports sequence number, success, exit code, and cwd in an OSC title
+sequence the renderer never draws:
+
+- **bash:** `bash --noprofile --norc -i` with `PROMPT_COMMAND` and `PS1` in
+  its environment; the prompt captures `$?`, then `export -n PROMPT_COMMAND`
+  so nested shells do not inherit it (verified on bash 3.2). On Windows,
+  `bash` means Git Bash, found under `ProgramFiles`, `ProgramW6432`, or
+  `LOCALAPPDATA\Programs`, never on PATH (which may hold WSL's);
+  `--shell-exe` overrides. The launcher's `MSYS_*` variables are removed
+  from its environment.
+- **PowerShell:** `-NoLogo -NoProfile -NoExit -EncodedCommand <prompt
+  script>`.
+- **wrap:** the wrapper is a prefix; `movie term` appends
+  `env PROMPT_COMMAND=... PS1=... bash --noprofile --norc -i`, so the binary
+  stays on the host and nothing of ours enters the container. It works with
+  wrappers that pass arguments through unchanged; ssh is not supported.
+
+When the script ends or fails, `movie term` kills the process tree it
+started (Unix: descendants; Windows: `taskkill /T /F`) using the handles it
+holds.
+
+## Instructions in the skill
+
+These routes get clear instructions and snippets instead of code, each
+ending in a `frames` directory, image, or clip that `build` takes:
+
+- **Browser apps**: Playwright (or raw CDP) against a copy of the data, with
+  the cursor overlay injected on every page, typing at human pace, and
+  either Playwright's own video recording or screenshots raced against a
+  short timeout. The existing cursor snippet and pacing rules carry over.
+- **Desktop windows**: one ffmpeg capture line per OS (`avfoundation`,
+  `gdigrab` by window title, `x11grab`), then look at a still before
+  filming, because a blocked capture "succeeds" with wallpaper.
+- **Log reels**: as today, for when capture is blocked or the thing to prove
+  is a run.
+- **Stills**: as today, as `image` scenes.
 
 ## Testing
 
@@ -266,15 +323,16 @@ screenshots raced against a short timeout, output a `frames` directory.
   ffmpeg's lavfi sources, ported from today's `test_checker`,
   `test_assembly`, `test_paths`, and `test_subtitles`, plus an unnarrated
   build and awkward paths (spaces, quotes, `%`, brackets, non-ASCII).
-- `term` tests use a real pty and real headless Chrome, including arrows in
-  application cursor mode, a program that queries the cursor position, a
-  still-running command, and close sparing an unrelated process.
+- `term` tests run real scripts in a real pty: a failing command, a timeout,
+  `film: false` splitting takes, arrows in application cursor mode, a
+  program that queries the cursor position, idle shortening, and cleanup
+  sparing an unrelated process. Rendering is tested by replaying committed
+  recordings and comparing frames with committed expected PNGs.
   `MOVIE_TEST_SHELL` and `MOVIE_TEST_SHELL_EXE` pick the shell.
-- Tests needing Chrome, Piper, or a key skip with a message naming what is
-  missing.
-- CI on macOS, Linux, and Windows. Setup steps install Chrome and Piper and
-  fail if they cannot, so those tests never skip in CI. Windows runs `term`
-  under PowerShell 5.1, PowerShell 7, and Git Bash.
+- Tests needing Piper or a key skip with a message naming what is missing.
+- CI on macOS, Linux, and Windows. Setup installs Piper and fails if it
+  cannot, so those tests never skip in CI. Windows runs `term` under
+  PowerShell 5.1, PowerShell 7, and Git Bash.
 
 Python tests are deleted with the code they cover, after their real
 behaviors are carried into Go tests; the mock-world tests are not ported.
@@ -287,10 +345,12 @@ behaviors are carried into Go tests; the mock-world tests are not ported.
    `narration_contract.py`, their tests, the ASR and Windows-pipeline docs;
    converts `examples/e2e/scenes.yaml`; installs the `piper` CLI in the e2e
    Dockerfile. Keeps `browser_tools.py`, which the Windows recorder imports.
-3. **`term`**: spike, then recorder. Deletes both `film-terminal.py` files,
+3. **`term`**: spike, then the tool. Deletes both `film-terminal.py` files,
    `browser_tools.py`, and their tests; rewrites `recording-a-terminal.md`;
-   moves the e2e demo to a `docker exec` wrapped session.
-4. **`browse`**: its own design first.
+   moves the e2e demo to `movie term` scripts with `wrap`.
+4. **Instructions**: rewrite `recording-motion.md` (browser apps and desktop
+   windows), `rendering-from-a-log.md`, `rendering-stills.md`, and SKILL.md
+   around the three commands.
 
 ## Known losses
 
@@ -300,11 +360,15 @@ behaviors are carried into Go tests; the mock-world tests are not ported.
 - Cards use the Go fonts: Latin, Greek, and Cyrillic only.
 - `movie` scenes fill the frame; no inset or gain control.
 - No subtitle styling or cue-length options.
-- Filmed shells are always clean (no user startup files); no zsh; no ssh.
 - Rejected narration attempts are not kept on disk.
+- Terminal sessions are scripted up front, not driven step by step across
+  tool calls; always clean (no user startup files); no zsh; no ssh.
+- No tool for browser apps or desktop capture; agents follow the
+  instructions.
 
 ## Risks
 
-- ConPTY behavior on Windows; the spike decides.
+- Emulator fidelity for full-screen TUIs, and ConPTY on Windows; the spike
+  decides both.
 - Piper's CLI is Python-packaged, so the keyless voice needs uv once.
 - Five binaries, roughly 10 MB each, per release that changes Go source.
