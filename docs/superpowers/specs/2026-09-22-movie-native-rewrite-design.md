@@ -33,20 +33,21 @@ because `uv` shebangs do not run on Windows.
 | Speech recognition | None. |
 | Engines | `openai`, `openai-chat`, `piper`. |
 | Scene file | New format, no backward compatibility. |
-| Terminal | Code: a live pty session the agent drives command by command, recorded and rendered to frames at the end. No browser. Gated on a spike. |
+| Terminal | tmux holds the session; `movie term` drives it, records styled snapshots, and renders frames. macOS, Linux, and WSL; no native Windows terminal filming. |
 | Browser apps, desktop capture, log reels, stills | Instructions in the skill, not code. |
 
 ## Commands
 
-| Command | Does |
-|---|---|
-| `movie build SCENES.yaml OUT.mp4` | narrate, assemble, subtitle, burn, check |
-| `movie check MOVIE` | the gate, on any movie |
-| `movie term start / run / type / key / wait / screen / film / stop` | drive a terminal session and render it into frames |
+| Command | Does | Platforms |
+|---|---|---|
+| `movie build SCENES.yaml OUT.mp4` | narrate, assemble, subtitle, burn, check | all |
+| `movie check MOVIE` | the gate, on any movie | all |
+| `movie term start / run / type / key / wait / screen / film / stop / render` | drive a terminal session and render it into frames | macOS, Linux, WSL |
 
 Exit codes: 0 success; 1 negative verdict (not shippable, narration
-rejected, a filmed command failed); 2 usage or environment error; 3 `term`
-only, the command is still running when the timeout passes.
+rejected, a filmed command failed); 2 usage or environment error (including
+`run` refused because a command is still running); 3 `term` only, the
+command is still running when `run` or `wait` returns.
 
 ## Layout and shipping
 
@@ -54,10 +55,11 @@ only, the command is still running when the timeout passes.
 cmd/movie/                  flag parsing and dispatch
 internal/scene/             parse and validate the scene file
 internal/ffmpeg/            run ffmpeg/ffprobe
+internal/fonts/             embedded fonts, fallback chain, coverage checks
 internal/narrate/           engines, clip cache, openai-chat gate
 internal/build/             segments, cards, concat, subtitles, burn
 internal/check/             sampling and the verdict
-internal/term/              pty session, recording, emulator, renderer
+internal/term/              tmux control, recorder, snapshot renderer
 skills/proving-it-works-with-a-movie/bin/
     movie                   sh launcher (macOS, Linux, Git Bash)
     movie-darwin-arm64  movie-darwin-amd64  movie-linux-amd64
@@ -66,8 +68,8 @@ script/build-binaries
 ```
 
 Decisions are pure functions over plain data (the check verdict, cue timing,
-the openai-chat gate, scene validation, prompt-marker parsing, key
-encoding, frame timing, idle-gap handling), tested directly with no mocks.
+the openai-chat gate, scene validation, prompt-marker parsing, SGR parsing,
+frame timing), tested directly with no mocks.
 
 **Launcher.** `bin/movie` maps `uname` to a binary and `exec`s it with
 `"$@"`. On Git Bash (`MINGW*`/`MSYS*`/`CYGWIN*`) it first exports
@@ -77,17 +79,26 @@ form (`cygpath -m`). PowerShell runs the `.exe` directly. No `.cmd`
 launcher, because cmd.exe mangles arguments.
 
 **Build.** `script/build-binaries` builds all five with `GOTOOLCHAIN` set to
-the exact version in `go.mod`'s `toolchain` line, `GOAMD64=v1`,
-`GOARM64=v8.0`, `CGO_ENABLED=0`, `-trimpath`, `-buildvcs=false`,
-`-ldflags "-s -w"`. `.gitattributes` forces LF on sources and marks `bin/*`
-binary. A test rebuilds all five and byte-compares them with the committed
-ones. Binaries are committed with the source change that alters them.
+the exact version in `go.mod` (the `toolchain` line if present, else the
+`go` line, which is kept at a full patch version such as `go 1.26.1`),
+`GOAMD64=v1`, `GOARM64=v8.0`, `CGO_ENABLED=0`, `-trimpath`,
+`-buildvcs=false`, `-ldflags "-s -w"`. `.gitattributes` forces LF on sources
+and marks `bin/*` and fonts binary. A test rebuilds all five and
+byte-compares them with the committed ones. Binaries are committed with the
+source change that alters them.
 
-**Prerequisites.** ffmpeg and ffprobe. For the keyless voice, Piper
+**Prerequisites.** ffmpeg and ffprobe everywhere. tmux for `term` (inside
+the container too, when filming one). For the keyless voice, Piper
 (`uv tool install piper-tts`) and a voice (`uvx --from piper-tts python -m
-piper.download_voices --data-dir DIR VOICE`); the tool never runs these, and
-a missing one is an error naming the command. The tool needs no browser;
-filming a browser app uses whatever browser automation the agent has.
+piper.download_voices --data-dir DIR VOICE`). The tool never installs
+anything, and a missing prerequisite is an error naming the command. No
+browser; filming a browser app uses whatever browser automation the agent
+has.
+
+**Fonts.** Embedded, under their permissive licenses: DejaVu Sans for cards
+and burned subtitles, DejaVu Sans Mono for terminals, plus fallback fonts
+for the symbols CLIs print (Claude Code's `⏺` and `⎿`, `⏵`, `⏸`, braille
+spinners, box drawing), chosen in the `term` spike. No CJK or emoji.
 
 ## The scene file
 
@@ -104,7 +115,7 @@ scenes:
     duration: 4
 
   - id: install
-    frames: install/         # directory of PNGs, lexical order
+    frames: takes/install/take-1/
     rate: 10
     narration: This is a container with nothing of ours in it.
 
@@ -123,7 +134,7 @@ scenes:
 | `image` | image | |
 | `frames`, `rate` | frames | `rate` defaults to `fps` |
 | `movie` | movie | |
-| `duration` | card, image | 3 s minimum hold |
+| `duration` | card, image | 3; the scene lasts max(narration, `duration`) |
 | `narration` | card, image, frames | none |
 
 A scene's kind is whichever of `card`, `image`, `frames`, or `movie` it
@@ -133,7 +144,8 @@ when `OPENAI_API_KEY` (or `llm keys get openai`) yields a key, else `piper`.
 Validation runs before any work and reports every problem at once with its
 scene id: unknown keys, zero or two kinds, a field on a kind that does not
 take it, bad or duplicate ids, missing files, empty frame directories,
-non-positive numbers.
+non-positive numbers, and card text containing a character the card font
+cannot draw (named, with its code point).
 
 ## `build`
 
@@ -150,26 +162,29 @@ narrated), and `demo-check/contact-sheet.png`, and keeps scratch in
    `openai-chat`, the transcript. A clip exists only if it was accepted, so
    there is no manifest to keep consistent. To redo a clip that sounds
    wrong, delete it; `build` prints each clip's path.
-3. **Assemble** each scene into `demo.build/<id>.mp4` at `size` and `fps`,
-   lasting max(narration, visuals): short video freezes its last frame,
-   short audio pads with silence. Frames are piped to ffmpeg's stdin
-   (`image2pipe`), so no user path appears inside a pattern. Cards are drawn
-   in Go with the embedded Go fonts (title and subtitle, centered, wrapped).
-   `movie` scenes are scaled to fit and keep their own audio, with a silent
-   track added if they have none. Segments are concatenated from a list of
-   their fixed safe names, run from the scratch directory, so nothing needs
-   escaping.
-4. **Subtitle**, only if anything is narrated: cues timed inside each
-   narrated scene's measured interval at its offset in the cut (today's
-   millisecond allocation), written to `demo.srt`.
-5. **Burn**, only if anything is narrated: copy the SRT into scratch as
-   `captions.srt` and burn it with the `subtitles` filter, boxed as today.
-   If ffmpeg lacks that filter, embed a soft track instead and print a
-   `WARN` saying the subtitles are not in the picture. A burn that fails
-   with the filter present is an error.
+3. **Assemble** each scene into `demo.build/<id>.mp4` at `size` and `fps`.
+   Frames and images are piped to ffmpeg's stdin (`image2pipe`), so no user
+   path is ever parsed as an ffmpeg pattern; an image is a one-frame
+   sequence. The last frame is held to max(narration, visuals or
+   `duration`), and short audio pads with silence. Cards are drawn in Go
+   (title and subtitle, centered, wrapped at spaces, shrunk until the
+   longest line fits). `movie` scenes are scaled to fit and keep their own
+   audio, with a silent track added if they have none. Segments are
+   concatenated from a list of their fixed safe names, run from the scratch
+   directory, so nothing needs escaping.
+4. **Subtitle**, only if anything is narrated: each narrated scene's cues
+   span its narration clip, starting at the scene's offset in the cut
+   (today's millisecond allocation), written to `demo.srt`.
+5. **Burn**, only if anything is narrated: copy the SRT and the embedded
+   DejaVu Sans into scratch and burn with
+   `subtitles=filename=captions.srt:fontsdir=.`, boxed as today, so the
+   result does not depend on system fonts. If ffmpeg lacks the `subtitles`
+   filter, embed a soft track instead and print a `WARN` saying the
+   subtitles are not in the picture. A burn that fails with the filter
+   present is an error.
 6. **Check** the result, expecting audio and subtitles exactly when
    something is narrated, and comparing subtitle coverage with the end of
-   the last narrated scene.
+   the last narration clip in the cut.
 
 ### The `openai-chat` gate
 
@@ -199,94 +214,82 @@ are required only when speech is heard, as today.
 
 ## `term`
 
-A live session the agent drives one command at a time, recorded and
-rendered afterwards. Terminal work here is one-off: the agent drives it with
-its own tool calls, a sub-agent, or a bespoke script, reacting to what it
-sees. The session process owns a real pty and a live terminal emulator,
-records every byte the shell writes with its timestamp, and at the end
-replays the recording to draw frames. No browser and no screenshot lag: the
-frames show exactly what the terminal showed, when it showed it.
-
-### Spike first
-
-Two questions decide whether this works, and the spike answers both before
-planning:
-
-1. **Emulator fidelity.** Replay recordings of real sessions through a Go
-   terminal emulator (`charmbracelet/x/vt`, else `hinshun/vt10x`) and render
-   them: a plain shell, colours, a full-screen TUI (`htop` or `less`), and a
-   Claude Code session. The frames must be indistinguishable in content from
-   a real terminal. The emulator must also answer the cursor-position and
-   device-attribute queries programs send, or those programs stall.
-2. **Windows.** With go-pty on real Windows, spawn PowerShell 5.1,
-   PowerShell 7, and Git Bash with the status prompt installed at launch;
-   write input and read output; check whether Git Bash loses its first
-   input and whether ConPTY's own query handling interferes.
-
-It also checks a `docker exec` wrapped session on the e2e image. If
-fidelity fails, the fallback is today's approach (xterm.js in headless
-Chrome) and the spec is revised before planning.
+tmux holds the shell, answers terminal queries, encodes keys, and keeps the
+session alive between the agent's tool calls. `movie term` drives it, records
+what it shows, and renders frames. The agent drives the session with its own
+tool calls, a sub-agent, or a bespoke script, reacting to what `screen`
+shows; this is for one-off movies.
 
 ### Verbs
 
 | Verb | Does |
 |---|---|
-| `start SESSION [--shell bash\|powershell\|pwsh] [--shell-exe PATH] [--cwd DIR] [--size COLSxROWS] [-- WRAPPER...]` | runs in the foreground, as a background task the harness keeps alive; owns the pty and emulator; writes `SESSION/session.log`; default size 120x34 |
-| `run SESSION 'cmd' [--timeout S]` | refuse unless the shell is at a prompt; type the command at human pace; press Enter; wait for the next prompt (default 60 s); print the exit code and the screen as text |
-| `type SESSION 'text'` | type into whatever is running, with no prompt check (a TUI's own input box) |
-| `key SESSION NAME` | `Enter`, `Escape`, `Tab`, an arrow, `Ctrl-C`, or one character; arrows follow the terminal's cursor-key mode |
-| `wait SESSION [--quiet S] [--timeout S]` | wait for the next prompt, or for output to go quiet for `--quiet` seconds; print the screen |
+| `start SESSION [--cwd DIR] [--size 120x34] [-- WRAPPER...]` | create the session and start the recorder in the background, then return |
+| `run SESSION 'cmd' [--timeout 60]` | refuse (exit 2) unless the shell is at a prompt; type the command at human pace; Enter; wait for the next prompt; print the exit code and the screen text |
+| `type SESSION 'text'` | type into whatever is running, at human pace, with no prompt check |
+| `key SESSION NAME` | `Enter`, `Escape`, `Tab`, `Up`, `Down`, `Left`, `Right`, `C-c`, or one character, via `tmux send-keys` |
+| `wait SESSION [--quiet S] [--timeout 60]` | wait for the next prompt (exit 0 or 1 with the shell's status), or for the screen to stay unchanged for `--quiet` seconds (exit 3, still running); print the screen text |
 | `screen SESSION` | print the current screen as text |
 | `film SESSION on\|off` | filming is on at start; `off` keeps what follows out of the movie, and each `on` starts a new take |
-| `stop SESSION OUTDIR` | end the session, kill its process tree, render the takes |
+| `stop SESSION OUTDIR` | end the session, stop the recorder, render the takes |
+| `render SESSION OUTDIR [--px 1600x900]` | render the takes again from the recording, even after the session is gone |
 
-`run` and `wait` exit 0 when the shell reports success, 1 when it reports
-failure, and 3 when the timeout passes with the command still running, so
-the caller can wait again or send `Ctrl-C`. Every verb waits up to 30 s for
-the session to come up.
+`start` and `stop` refuse a non-empty `SESSION` or `OUTDIR`.
 
-The verbs reach `start` over a localhost HTTP endpoint guarded by a random
-token; `start` writes both to `SESSION/session.json` once the shell has shown
-its first prompt. Because the emulator runs live inside `start`, it answers
-the terminal queries programs send, and `screen` can show the agent what is
-on screen as text, which is how a driver decides what to do next.
+**The session.** `start` runs a private tmux server on
+`SESSION/tmux.sock`, so it never touches the user's own tmux, and in it
+`env -i` with a fixed environment and `bash --noprofile --norc -i`:
+`TERM=xterm-256color`, `HOME`, `PATH`, `BASH_SILENCE_DEPRECATION_WARNING=1`
+(no macOS zsh banner), `HISTFILE=SESSION/history` (never the user's
+history), `PS1`, and a `PROMPT_COMMAND` that captures `$?`, runs
+`export -n PROMPT_COMMAND` so nested shells do not inherit it, and sets the
+title to `MOVIE;<sequence>;<status>` (verified with bash 3.2 and tmux 3.5a:
+the marker appears in `#{pane_title}`). After the first prompt, `start`
+clears the screen, then starts recording, so the first frame is a clean
+prompt.
 
-### Output
+**The recorder** is `movie term start` re-executed as a detached background
+process, so `start` returns at once and no harness needs to keep a task
+alive. It polls `tmux capture-pane -p -e` (text with colour codes), the
+cursor position, and the pane title as fast as tmux answers, up to 10 times
+a second, and appends each changed snapshot with its timestamp and the
+current `film` state to `SESSION/recording.jsonl`. It exits when the tmux
+server does.
 
-`stop SESSION takes/install` writes `take-1/`, `take-2/`, ...: one PNG
-directory per filmed stretch, rendered at 10 fps from the recording, each
-with a `take.json` holding a ready-to-paste `frames` scene.
-`SESSION/session.log` stays for re-rendering or inspection.
+**Readiness and status.** A prompt has returned when the title's sequence
+number has advanced and `#{pane_current_command}` is `bash`. `run` refuses
+unless that holds; typing only ever happens at a prompt, so keys cannot land
+in a running program's stdin.
 
-Frames are 1600×900 by default (`--px WxH` on `stop`), drawn with an
-embedded monospace font with wide glyph coverage (DejaVu Sans Mono, under
-its permissive license). Output quiet for more than 3 s inside a take is
-shortened to 3 s, so a slow command does not become dead air.
+**Containers.** With `-- WRAPPER...`, such as `-- docker exec CONTAINER`,
+every tmux command runs through the wrapper, so tmux and the shell live in
+the container while `movie` and the recording stay on the host. `--cwd` is
+then a path inside the container. The container needs tmux, as today's demo
+image has.
 
-### The shell
+**Rendering.** `render` (and `stop`) turn `recording.jsonl` into
+`OUTDIR/take-1/`, `take-2/`, ...: one PNG directory per filmed stretch at 10
+fps, each snapshot held until the next, each with a `take.json` holding a
+ready-to-paste `frames` scene. A snapshot is drawn cell by cell from its
+text and colour codes (tmux emits only SGR sequences in `capture-pane -e`),
+with wide characters taking two cells and a block cursor. Glyphs come from
+DejaVu Sans Mono, then the fallback fonts; a character none of them has is
+drawn as a visible replacement box, and `render` prints a `WARN` listing
+every such character with its code point, so a missing glyph is never
+silent. Time is never compressed: long waits belong behind `film off`.
 
-The shell always starts clean, with a status prompt installed at launch that
-reports sequence number, success, exit code, and cwd in an OSC title
-sequence the renderer never draws:
+**Cleanup.** `stop` kills the private tmux server, which ends the shell and
+everything it started; the recorder then exits. Processes a wrapper started
+inside a container end with that container's tmux server.
 
-- **bash:** `bash --noprofile --norc -i` with `PROMPT_COMMAND` and `PS1` in
-  its environment; the prompt captures `$?`, then `export -n PROMPT_COMMAND`
-  so nested shells do not inherit it (verified on bash 3.2). On Windows,
-  `bash` means Git Bash, found under `ProgramFiles`, `ProgramW6432`, or
-  `LOCALAPPDATA\Programs`, never on PATH (which may hold WSL's);
-  `--shell-exe` overrides. The launcher's `MSYS_*` variables are removed
-  from its environment.
-- **PowerShell:** `-NoLogo -NoProfile -NoExit -EncodedCommand <prompt
-  script>`.
-- **wrap:** the wrapper is a prefix; `movie term` appends
-  `env PROMPT_COMMAND=... PS1=... bash --noprofile --norc -i`, so the binary
-  stays on the host and nothing of ours enters the container. It works with
-  wrappers that pass arguments through unchanged; ssh is not supported.
+### Spike first
 
-On `stop`, or if `start` is interrupted, it kills the process tree it
-started (Unix: descendants; Windows: `taskkill /T /F`) using the handles it
-holds, never PIDs read from files. Processes a wrapper started on the other
-side (inside a container) are not its to kill.
+Before the plan's `term` work, a short spike confirms, on macOS and Linux:
+the prompt marker and readiness rule under `capture-pane` polling; capture
+rates achievable locally and through `docker exec`; SGR coverage in
+`capture-pane -e` output from real sessions (a plain shell, `htop` or
+`less`, and a Claude Code session); and which fallback fonts cover what those
+sessions print.
 
 ## Instructions in the skill
 
@@ -303,6 +306,7 @@ ending in a `frames` directory, image, or clip that `build` takes:
 - **Log reels**: as today, for when capture is blocked or the thing to prove
   is a run.
 - **Stills**: as today, as `image` scenes.
+- **Native Windows terminals**: use WSL and `movie term`.
 
 ## Testing
 
@@ -310,55 +314,56 @@ ending in a `frames` directory, image, or clip that `build` takes:
 - Unit tests for the pure functions listed under "Layout".
 - Black-box tests run the binary on movies generated at test time with
   ffmpeg's lavfi sources, ported from today's `test_checker`,
-  `test_assembly`, `test_paths`, and `test_subtitles`, plus an unnarrated
-  build and awkward paths (spaces, quotes, `%`, brackets, non-ASCII).
-- `term` tests drive a real session through the verbs: a failing command, a
-  timeout returning 3, `run` refusing while a command runs, `film off`/`on`
-  splitting takes, `screen` text, arrows in application cursor mode, a
-  program that queries the cursor position, idle shortening, and cleanup
-  sparing an unrelated process. Rendering is tested by replaying committed
-  recordings and comparing frames with committed expected PNGs.
-  `MOVIE_TEST_SHELL` and `MOVIE_TEST_SHELL_EXE` pick the shell.
-- Tests needing Piper or a key skip with a message naming what is missing.
-- CI on macOS, Linux, and Windows. Setup installs Piper and fails if it
-  cannot, so those tests never skip in CI. Windows runs `term` under
-  PowerShell 5.1, PowerShell 7, and Git Bash.
+  `test_assembly`, `test_paths`, `test_subtitles`, the cue-allocation and
+  SRT cases in `test_subtitle_contract`, the checker case in
+  `test_narration_contract`, and the `openai-chat` gate cases in
+  `test_narration_contract` and `test_narration`; plus an unnarrated build,
+  a frames scene whose visuals outlast its narration, card text with an
+  undrawable character, and awkward paths (spaces, quotes, `%`, brackets,
+  non-ASCII) for every scene kind.
+- `term` tests drive a real tmux session through the verbs: a failing
+  command, a timeout returning 3, `run` refusing while a command runs,
+  `film off`/`on` splitting takes, `screen` text, `render` after the
+  session is gone, refusal of non-empty directories, the user's history
+  staying untouched, and a pass-through wrapper (`env`) standing in for
+  `docker exec`.
+- Rendering tests replay committed recordings and compare with committed
+  PNGs within a small per-pixel tolerance, because Go's font rasterizing
+  differs slightly between arm64 and amd64.
+- The launcher is tested by running `bin/movie` on each CI platform,
+  including Git Bash on Windows.
+- Tests needing tmux, Piper, or a key skip with a message naming what is
+  missing. CI installs tmux and Piper and fails if it cannot, so those tests
+  never skip there.
+- CI on macOS, Linux, and Windows (`build` and `check` only on Windows).
 
 Python tests are deleted with the code they cover, after their real
 behaviors are carried into Go tests; the mock-world tests are not ported.
 
 ## Order
 
-1. **Core and `check`**: module, launcher, build script, freshness test, CI,
-   `movie check`. Deletes `check-movie` and its tests.
-2. **`build`**. Deletes the other pipeline scripts, `media_paths.py`,
-   `narration_contract.py`, their tests, the ASR and Windows-pipeline docs;
-   converts `examples/e2e/scenes.yaml`; installs the `piper` CLI in the e2e
-   Dockerfile. Keeps `browser_tools.py`, which the Windows recorder imports.
-3. **`term`**: spike, then the tool. Deletes both `film-terminal.py` files,
-   `browser_tools.py`, and their tests; rewrites `recording-a-terminal.md`;
-   moves the e2e demo to `movie term` scripts with `wrap`.
-4. **Instructions**: rewrite `recording-motion.md` (browser apps and desktop
-   windows), `rendering-from-a-log.md`, `rendering-stills.md`, and SKILL.md
-   around the three commands.
+Every step that deletes a Python tool rewrites the docs that mention it in
+the same change, so the skill is never broken between steps. See the
+implementation plan for the steps.
 
 ## Known losses
 
 - No per-stage commands; rerunning any part reruns `build` (narration is
   cached).
 - No phonetic respelling separate from the subtitles.
-- Cards use the Go fonts: Latin, Greek, and Cyrillic only.
+- Cards and subtitles: no CJK or emoji; cards reject what they cannot draw.
 - `movie` scenes fill the frame; no inset or gain control.
 - No subtitle styling or cue-length options.
 - Rejected narration attempts are not kept on disk.
-- Terminal sessions are always clean (no user startup files); no zsh; no
-  ssh.
+- Terminal: bash only, always clean (no user startup files or history), no
+  native Windows (use WSL), no zsh, no ssh; CJK and emoji render as
+  replacement boxes with a warning.
 - No tool for browser apps or desktop capture; agents follow the
   instructions.
 
 ## Risks
 
-- Emulator fidelity for full-screen TUIs, and ConPTY on Windows; the spike
-  decides both.
+- `capture-pane` polling rate through `docker exec`; the spike measures it.
 - Piper's CLI is Python-packaged, so the keyless voice needs uv once.
-- Five binaries, roughly 10 MB each, per release that changes Go source.
+- Five binaries, roughly 10 MB each (more with fonts), per release that
+  changes Go source.
