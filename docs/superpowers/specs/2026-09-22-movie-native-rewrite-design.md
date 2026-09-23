@@ -1,641 +1,310 @@
 # `movie`: a native rewrite of the proving-it-works tools
 
-Date: 2026-09-22
-Status: design, revised after two adversarial reviews, awaiting review
+Date: 2026-09-23
+Status: design, simplified after two adversarial reviews, awaiting review
 
-## Why
+## Goal
 
-The skill's knowledge is good and its code is not. The pipeline is five
-Python scripts the agent must run in order with matching flags, handing state
-through three files (`manifest.json`, `offsets.json`, `segments/`) that each
-tool reads its own way. There is no shared core, the scene file is never
-validated up front, the browser motion route has no tool at all, the terminal
-route is a prose recipe on Unix and a 632-line daemon on Windows, and a third
-of the docs are PowerShell and Git Bash copies of the pipeline because `uv`
-shebangs do not run on Windows. The contract tests patch module internals by
-name, so they cannot guard a restructuring.
+A simple set of tools any agent can use to make a movie proving that
+something works. Every feature below earns its place against that goal;
+anything that only adds configuration or polish is out.
 
-## Decisions already made
+## Why rewrite
+
+The pipeline today is five Python scripts the agent must run in order with
+matching flags, handing state through three files each tool reads its own
+way. There is no shared core, the scene file is never validated, the browser
+route has no tool, the terminal route is a prose recipe on Unix and a
+632-line daemon on Windows, and a third of the docs are PowerShell and Git
+Bash copies of the pipeline because `uv` shebangs do not run on Windows.
+
+## Decisions
 
 | Decision | Choice |
 |---|---|
-| Language | Go. The work is orchestration (ffmpeg, HTTP, YAML, Chrome), and chromedp plus easy cross-compilation to Windows decide it. |
+| Language | Go, one binary. |
 | Distribution | Prebuilt binaries committed to the repo. The skill never downloads executables at run time. |
-| Speech recognition | Removed entirely. No ASR in the tool or in the skill's instructions. |
-| `openai-chat` engine | Kept, gated by its own returned transcript. |
-| Scene file | Redesigned freely. No backward compatibility code. |
-| Terminal recording | The binary owns the pty and serves its own xterm.js page. Gated on a Windows ConPTY spike; the fallback is porting today's ttyd route. |
-| `browse` | In scope, built last. |
+| Speech recognition | None. |
+| Engines | `openai`, `openai-chat`, `piper`. |
+| Scene file | New format, no backward compatibility. |
+| Terminal | The binary owns the pty and serves its own xterm.js page, gated on a Windows ConPTY spike. |
+| `browse` | Built last, from its own design. |
 
-## Shape
+## Commands
 
-One binary, `movie`, invoked by its path inside the skill, never from PATH.
-
-| Command | Does | Replaces |
-|---|---|---|
-| `movie build SCENES.yaml` | every stage below, in order; one exit code | the five scripts, run by hand |
-| `movie narrate / assemble / subtitles / burn SCENES.yaml` | one stage, for debugging; see "Stages" | the same scripts |
-| `movie check MOVIE` | the gate, usable on any movie | `check-movie` |
-| `movie term serve / wait / run / key / watch / close` | film a real shell | both `film-terminal.py` files and the tmux recipe |
-| `movie browse SCENES.yaml` | film a web app from scripted actions | nothing (new) |
-| `movie version` | the source hash the binary was built from | nothing |
-
-### Exit codes, identical for every command
-
-| Code | Meaning |
+| Command | Does |
 |---|---|
-| 0 | success |
-| 1 | the verdict is negative: movie not shippable, narration rejected, filmed command failed |
-| 2 | usage or environment error: bad scene file, missing ffmpeg, unreadable input, stale build state, session not ready |
-| 3 | `term` only: the filmed command is still running |
+| `movie build SCENES.yaml OUT.mp4` | narrate, assemble, subtitle, burn, check |
+| `movie check MOVIE` | the gate, on any movie |
+| `movie term serve / run / key / watch / close` | film a real shell |
+| `movie browse ...` | film a web app (later) |
 
-### Repository layout
+Exit codes for every command: 0 success; 1 negative verdict (not
+shippable, narration rejected, filmed command failed); 2 usage or environment
+error; 3 `term` only, the filmed command is still running.
+
+## Layout and shipping
 
 ```
-cmd/movie/                  main: flag parsing and dispatch only
-internal/scene/             scene file types, parsing, validation
-internal/state/             build.json: read, atomic write, staleness rules
-internal/ffmpeg/            one runner for ffmpeg/ffprobe; probe helpers; path escaping
-internal/narrate/           engines, acceptance checks
-internal/assemble/          segments and concat
-internal/subtitles/         cue timing, SRT writing and parsing, burning
+cmd/movie/                  flag parsing and dispatch
+internal/scene/             parse and validate the scene file
+internal/ffmpeg/            run ffmpeg/ffprobe
+internal/narrate/           engines, clip cache, openai-chat gate
+internal/build/             segments, cards, concat, subtitles, burn
 internal/check/             sampling and the verdict
-internal/chrome/            finding Chrome/Chromium/Edge, headless launch, screenshots
-internal/proc/              owned-process-tree cleanup
-internal/term/              pty session, control server, xterm.js page, keys, frame scheduler
-internal/browse/            action runner, cursor overlay
+internal/term/              pty session, page, keys, frames
+internal/chrome/            find and drive Chrome (term, browse)
 skills/proving-it-works-with-a-movie/bin/
-    movie                   POSIX sh launcher for macOS, Linux, and Git Bash
+    movie                   sh launcher (macOS, Linux, Git Bash)
     movie-darwin-arm64  movie-darwin-amd64  movie-linux-amd64
     movie-linux-arm64   movie-windows-amd64.exe
-script/build-binaries       cross-compiles all five, reproducibly
+script/build-binaries
 ```
 
-Every decision is a pure function over plain data, with I/O at the edges:
-the check verdict takes change and loudness series with timestamps; cue
-timing takes text and durations; narration acceptance takes script text, a
-claimed transcript, and a measured duration; key encoding takes a key name
-and the terminal's cursor-key mode; the terminal frame scheduler takes
-capture timestamps and returns which frame fills each slot. These are what
-the unit tests exercise, with no mocks.
+Decisions are pure functions over plain data (the check verdict, cue timing,
+the openai-chat gate, scene validation, key encoding, the frame scheduler),
+tested directly with no mocks.
 
-### Launching
+**Launcher.** `bin/movie` maps `uname` to a binary and `exec`s it with
+`"$@"`. On Git Bash (`MINGW*`/`MSYS*`/`CYGWIN*`) it first exports
+`MSYS_NO_PATHCONV=1` and `MSYS2_ARG_CONV_EXCL='*'`, so Git Bash does not
+rewrite Unix-looking arguments; paths from Git Bash are passed in Windows
+form (`cygpath -m`). PowerShell runs the `.exe` directly. No `.cmd`
+launcher, because cmd.exe mangles arguments.
 
-`bin/movie` is a POSIX sh script that maps `uname -s`/`uname -m` to a binary
-(`Darwin`, `Linux`, and `MINGW*`/`MSYS*`/`CYGWIN*`, which select the Windows
-`.exe`) and `exec`s it with `"$@"`. On the Windows branch it first exports
-`MSYS_NO_PATHCONV=1` and `MSYS2_ARG_CONV_EXCL='*'`, because Git Bash
-otherwise rewrites Unix-looking arguments (`/usr/bin/env`, `/c/...`) when it
-starts a native `.exe`, which would corrupt `term run` commands and wrapper
-arguments. Paths passed from Git Bash must therefore be in Windows form
-(`cygpath -m`), as the docs already say. The binary removes both variables
-from any shell it films.
+**Build.** `script/build-binaries` builds all five with `GOTOOLCHAIN` set to
+the exact version in `go.mod`'s `toolchain` line, `GOAMD64=v1`,
+`GOARM64=v8.0`, `CGO_ENABLED=0`, `-trimpath`, `-buildvcs=false`,
+`-ldflags "-s -w"`. `.gitattributes` forces LF on sources and marks `bin/*`
+binary. A test rebuilds all five and byte-compares them with the committed
+ones. Binaries are committed with the source change that alters them.
 
-There is no `.cmd` launcher: cmd.exe mangles `%`, `&`, `|`, and quotes in
-arguments, and `term run` passes arbitrary shell text. PowerShell calls the
-`.exe` directly (`& "$skill/bin/movie-windows-amd64.exe"`), and SKILL.md shows
-both forms once.
-
-### Shipping the binaries
-
-`script/build-binaries` reads the exact Go version from the `toolchain` line
-in `go.mod` and builds with `GOTOOLCHAIN=<that version>` (the `toolchain`
-directive alone is only a minimum), `GOAMD64=v1`, `GOARM64=v8.0`,
-`CGO_ENABLED=0`, `-trimpath`, `-buildvcs=false`, and
-`-ldflags "-s -w -X main.sourceHash=<hash>"`.
-
-`<hash>` is a SHA-256 over the git-tracked inputs that go into the binary:
-`go.mod`, `go.sum`, every non-test `.go` file outside `testdata/`, and every
-embedded asset (the xterm.js copy, the card template, the cursor overlay).
-Tests are excluded, so editing a test never forces new binaries.
-`.gitattributes` forces LF for those inputs and marks `bin/*` binary, so a
-Windows checkout hashes and builds identically.
-
-The freshness test rebuilds all five into a temporary directory with the same
-script and byte-compares them with the committed binaries. Any difference
-fails, so the bytes that run are the bytes built from the reviewed source.
-Binaries are rebuilt and committed only when build inputs change, in the same
-commit.
-
-### Prerequisites afterwards
-
-ffmpeg and ffprobe; Chrome, Chromium, or Edge for cards, `term`, and `browse`;
-Piper for the keyless voice. Piper installs once with
-`uv tool install piper-tts` (which puts `piper` on PATH), and a voice with
-`uvx --from piper-tts python -m piper.download_voices --data-dir DIR VOICE`.
-The skill runs neither command itself. Today `narrate` downloads a missing
-voice on first use; that stops, and a missing voice is an error naming the
-command. uv, Python, tmux, and ttyd are no longer needed by the tool.
+**Prerequisites.** ffmpeg and ffprobe. Chrome, Chromium, or Edge for `term`
+and `browse` only. For the keyless voice, Piper (`uv tool install
+piper-tts`) and a voice (`uvx --from piper-tts python -m
+piper.download_voices --data-dir DIR VOICE`); the tool never runs these, and
+a missing one is an error naming the command.
 
 ## The scene file
 
-The kind of a scene is whichever one of `card`, `image`, `frames`, or `movie`
-it has, so a scene cannot claim one kind and carry another's fields. Paths
-are relative to the scene file.
-
 ```yaml
-output: demo.mp4             # default: <scene file stem>.mp4
-size: 1920x1080
-fps: 30
-voice:
-  engine: auto               # auto | openai | openai-chat | piper
-  name: nova
-subtitles:
-  font: DejaVu Sans
-  size: 16
+size: 1920x1080              # default
+fps: 30                      # default
+engine: auto                 # auto | openai | openai-chat | piper
+voice: nova                  # default: nova (openai*), en_US-lessac-medium (piper)
 
 scenes:
   - id: title
-    card: {title: proving-it-works, subtitle: installed from a public marketplace}
+    card: proving-it-works
+    subtitle: installed from a public marketplace
     duration: 4
 
   - id: install
-    frames: install/
+    frames: install/         # directory of PNGs, lexical order
     rate: 2.6
-    narration: >-
-      This is a container with nothing of ours in it.
+    narration: This is a container with nothing of ours in it.
 
   - id: sheet
     image: work/out/contact-sheet.png
-    narration: So we check it with smevals.
-    speak: So we check it with S M evals.
+    narration: So we do.
 
   - id: movie
     movie: work/out/counter.mp4
-    height: 1000
-    gain_db: 1.5
 ```
 
-### Every field
-
-Top level:
-
-| Field | Type | Default | Meaning |
-|---|---|---|---|
-| `output` | path | `<scene stem>.mp4` | the finished movie |
-| `size` | `WxH` | `1920x1080` | output resolution |
-| `fps` | positive int | 30 | output frame rate |
-| `voice.engine` | enum | `auto` | `auto` picks `openai` with a key, else `piper` |
-| `voice.name` | string | `nova` (openai engines), `en_US-lessac-medium` (piper) | |
-| `subtitles.font` | string | `DejaVu Sans` | burned subtitle font |
-| `subtitles.size` | positive int | 16 | burned subtitle size |
-| `subtitles.margin` | non-negative int | 30 | bottom margin, px |
-| `subtitles.soft` | bool | false | embed a soft track even when burning is possible |
-| `subtitles.max_chars` | positive int | 84 | cue length limit |
-| `subtitles.max_secs` | positive number | 5.5 | cue duration limit |
-| `check.expect_audio` | `auto`, bool | `auto` | see "`check` inside `build`" |
-| `check.expect_subtitles` | `auto`, bool | `auto` | same |
-
-Per scene:
-
-| Field | Kinds | Default | Meaning |
-|---|---|---|---|
-| `id` | all | required | `[a-z0-9][a-z0-9-]*`, unique |
-| `card.title`, `card.subtitle` | card | empty | HTML-escaped text |
-| `card.background` | card | `#101014` | CSS color |
-| `card.title_size`, `card.subtitle_size` | card | scaled from height | px |
-| `image` | image | | path to a still |
-| `frames` | frames | | directory of PNGs, lexical order |
-| `rate` | frames | the movie's `fps` | playback rate of those PNGs |
-| `movie` | movie | | path to a clip, played with its own audio |
-| `height` | movie | 82% of output height | inner height; the rest is padding |
-| `gain_db` | movie | 0 | audio gain |
-| `duration` | card, image | 3 | minimum hold, seconds |
-| `narration` | card, image, frames | none | the words the viewer reads in the subtitles |
-| `speak` | card, image, frames | `narration` | what the voice is sent, for phonetic respellings; requires `narration` |
-
-`speak` implements the existing advice in narrating.md to respell a
-mispronounced term for the voice only: subtitles show `narration`; the voice,
-the `openai-chat` transcript comparison, and the pace check use `speak`.
-
-Validation happens before any work starts and reports every problem at once,
-each with its scene id: unknown keys, a scene with zero or two kinds, a field
-used on a kind that does not take it (including `narration` on a `movie`
-scene), `speak` without `narration`, duplicate or malformed ids, missing
-source files, empty frame directories, and non-positive sizes, rates, or
-durations.
-
-## Stages and state
-
-`movie build demo.yaml` names every artifact after the output file's stem,
-beside the output:
-
-```
-demo.mp4                     the movie
-demo.srt                     sidecar subtitles, which check reads (narrated movies only)
-demo-check/contact-sheet.png the sheet to look at
-demo-check/check.json        the full check result
-```
-
-Scratch lives beside the scene file and is named after the scene file's
-stem, gitignored and safe to delete:
-
-```
-demo.build/
-    build.json               the single record of this build
-    narration/<id>.wav       accepted clips
-    narration/.<id>.attempt-<random>.wav   rejected attempts, kept as evidence
-    segments/<id>.mp4
-    cut.mp4                  the assembled movie before subtitles
-```
-
-`build.json` replaces `manifest.json` and `offsets.json`. It is the only
-channel between the build stages, so a stage run alone behaves exactly as it
-does inside `build`:
-
-| Stage | Reads | Writes |
+| Field | Kinds | Default |
 |---|---|---|
-| `narrate` | scene file, `build.json` | `narration/`, narration entries |
-| `assemble` | scene file, `build.json` | `segments/`, `cut.mp4`, the assembly record |
-| `subtitles` | scene file, `build.json` | `<output stem>.srt`, the subtitles record |
-| `burn` | scene file, `build.json`, `cut.mp4`, the `.srt` | `output` |
+| `id` | all | required; `[a-z0-9][a-z0-9-]*`, unique |
+| `card` (title), `subtitle` | card | |
+| `image` | image | |
+| `frames`, `rate` | frames | `rate` defaults to `fps` |
+| `movie` | movie | |
+| `duration` | card, image | 3 s minimum hold |
+| `narration` | card, image, frames | none |
 
-`build.json` is always written atomically (temp file, then rename). Per
-narrated scene it records the text sent to the voice, synthesis identity
-(engine, voice, model), WAV name relative to `narration/`, and measured
-duration.
+A scene's kind is whichever of `card`, `image`, `frames`, or `movie` it
+has. Paths are relative to the scene file. `engine: auto` picks `openai`
+when `OPENAI_API_KEY` (or `llm keys get openai`) yields a key, else `piper`.
 
-### Staleness
+Validation runs before any work and reports every problem at once with its
+scene id: unknown keys, zero or two kinds, a field on a kind that does not
+take it, bad or duplicate ids, missing files, empty frame directories,
+non-positive numbers.
 
-Every stage refuses stale input with exit 2 and a message naming the stage to
-rerun:
+## `build`
 
-- `assemble` and `subtitles` refuse when a narrated scene has no entry, when
-  the entry's text differs from the scene's `speak` text after collapsing
-  whitespace, when its synthesis identity differs from what the scene file
-  now asks for, or when its WAV is missing or its path is absolute. This is
-  today's `narration_contract` rule plus the identity check, applied
-  uniformly; today `make-subtitles` bypasses it.
-- `assemble` records a fingerprint: a hash of the scene file's bytes and the
-  narration entries it used, along with each scene's segment duration and
-  offset. `subtitles` refuses unless that fingerprint matches the current
-  scene file and entries, and records the same fingerprint plus a hash of the
-  `.srt` it wrote. `burn` refuses unless both records match the current
-  inputs and the `.srt` on disk still has the recorded hash.
+`movie build demo.yaml demo.mp4` writes `demo.mp4`, `demo.srt` (when
+narrated), and `demo-check/contact-sheet.png`, and keeps scratch in
+`demo.build/` beside the output.
 
-### Narration acceptance order
+1. **Validate.**
+2. **Narrate** each narrated scene. The clip is
+   `demo.build/narration/<hash of text, engine, voice, model>.wav`. If it
+   exists it is reused. Otherwise synthesize to a temp file, apply the
+   `openai-chat` gate if that engine is used, and rename into place only if
+   accepted; two attempts, then exit 1 with the reason and, for
+   `openai-chat`, the transcript. A clip exists only if it was accepted, so
+   there is no manifest to keep consistent. To redo a clip that sounds
+   wrong, delete it; `build` prints each clip's path.
+3. **Assemble** each scene into `demo.build/<id>.mp4` at `size` and `fps`,
+   lasting max(narration, visuals): short video freezes its last frame,
+   short audio pads with silence. Frames are piped to ffmpeg's stdin
+   (`image2pipe`), so no user path appears inside a pattern. Cards are drawn
+   in Go with the embedded Go fonts (title and subtitle, centered, wrapped)
+   to a PNG, so `build` needs no browser. `movie` scenes are scaled to fit
+   and keep their own audio, with a silent track added if they have none.
+   Segments are concatenated with a list of their fixed safe names, run from
+   the scratch directory, so nothing needs escaping.
+4. **Subtitle**, only if anything is narrated: cues timed inside each
+   narrated scene's measured interval at its offset in the cut (today's
+   millisecond allocation), written to `demo.srt`.
+5. **Burn**, only if anything is narrated: copy the SRT into scratch as
+   `captions.srt` and burn it with the `subtitles` filter, boxed as today.
+   If ffmpeg lacks that filter, embed a soft track instead and print a
+   `WARN` saying the subtitles are not in the picture. A burn that fails
+   with the filter present is an error.
+6. **Check** the result, expecting audio and subtitles exactly when
+   something is narrated, and comparing subtitle coverage with the end of
+   the last narrated scene.
 
-So an interrupted run can never leave an entry pointing at unaccepted bytes:
+### The `openai-chat` gate
 
-1. Synthesize into a new `.<id>.attempt-<random>.wav`.
-2. Run the acceptance checks on it. A rejected attempt stays on disk.
-3. Remove the scene's entry from `build.json` (atomic write).
-4. Rename the attempt to `<id>.wav`.
-5. Measure it and write the new entry (atomic write).
+Kept exactly from today: normalize script and returned transcript (NFKC,
+casefold, letters, numbers, and marks only); reject when the transcript is
+empty or when `|len(want) - len(got)| + positional mismatches` exceeds
+`max(2, len(want) // 25)`; reject scripts that cannot be split into words.
+It proves what the model says it said, not what is in the WAV, and the docs
+say so.
 
-If every attempt is rejected, the old entry, if any, is left in place and the
-stage exits 1; because the readers check text and synthesis identity against
-the scene file, a stale entry left this way can never be assembled.
-
-A clip is reused only when its entry's text and synthesis identity match and
-its WAV exists. `--renarrate ID...` (on `build` and `narrate`) forces new
-clips for those scenes; `--renarrate all` forces every one.
-
-### Stages in `build`
-
-In order, stopping at the first failure:
-
-1. **validate** the scene file.
-2. **narrate**.
-3. **assemble**: each segment lasts max(narration, visuals); short video
-   freezes its last frame, short audio pads with silence; `movie` scenes keep
-   their own audio and get a silent track when they have none. Segments are
-   rebuilt every time; narration is the only cache.
-4. **subtitles**: cues timed within each narrated scene's measured interval
-   at its offset in the cut, with today's millisecond allocation and
-   rebalancing. Skipped when no scene is narrated: ffmpeg rejects an empty
-   SRT for both burning and a soft track.
-5. **burn** into the picture when ffmpeg has the `subtitles` filter and
-   `subtitles.soft` is false. If the filter is missing, or the burn fails,
-   embed a soft track instead. Either fallback prints a `WARN` line naming the
-   reason, and `build` still exits 0, because the movie is valid; the warning
-   is repeated in `build`'s final summary. With no narrated scene, `cut.mp4`
-   is copied to `output` unchanged.
-6. **check** the finished movie, with expectations set by `build` (below).
-
-## Narration
-
-Engines implement one interface: synthesize text to a WAV, optionally
-returning the engine's own transcript.
-
-| Engine | How | Model |
-|---|---|---|
-| `openai` | `/v1/audio/speech` | `gpt-4o-mini-tts` |
-| `openai-chat` | `/v1/chat/completions` with audio output | `gpt-audio-1.5` |
-| `piper` | runs `piper -m VOICE --data-dir DIR -i TEXT.txt -f OUT.wav` | the voice name |
-
-Piper reads the text from a UTF-8 file (`-i`), never from arguments, where
-narration words that look like flags would be misparsed, and never from
-stdin, which Python decodes in the ANSI code page on Windows.
-
-The key comes from `OPENAI_API_KEY`, then `llm keys get openai`, as today.
-Piper voices live in `PIPER_VOICE_DIR`, defaulting to
-`~/.cache/piper-voices`, as today; the e2e image relies on that variable. A
-missing `piper` or a missing voice fails with the exact install command from
-"Prerequisites".
-
-Acceptance checks, all pure functions, applied to the `speak` text:
-
-- **Transcript, `openai-chat` only.** This is today's gate, kept exactly. The
-  transcript is the engine's own text, not a noisy ASR, so strict comparison
-  is right: after normalizing (NFKC, casefold, letters/numbers/marks only),
-  the transcript must contain speech, and the positional drift
-  `|len(want) - len(got)| + mismatches at the same position` must not exceed
-  `max(2, len(want) // 25)`. That rejects a one-word spoken preamble. A script
-  that cannot be split into words (CJK, Thai) is rejected for this engine.
-  The docs state plainly that this proves what the model says it said, not
-  what is in the WAV.
-- **Pace, every engine.** A clip of five or more words is rejected when its
-  words per second falls outside 1.0 to 5.0. This catches empty, truncated,
-  or runaway clips. It does not catch a skipped sentence or a short preamble,
-  and the docs say so: for `openai` and `piper`, listening to the clips is
-  the content check. Scripts without spaces skip this check and the output
-  says so.
-
-A new clip gets two attempts. A reused clip was accepted when it was made and
-is not re-checked.
+`piper` runs `piper -m VOICE --data-dir DIR -i TEXT.txt -f OUT.wav`, text in
+a UTF-8 file. Voices live in `PIPER_VOICE_DIR`, default
+`~/.cache/piper-voices`.
 
 ## `check`
 
-### Sampling
+Today's `check-movie`, ported as is: 1 Hz colour samples, 320 px wide; a
+second counts as a change when more than 0.2% of pixels move by more than 8
+grey levels; 1-second RMS windows, speech at -45 dBFS or louder; today's
+failures (not a movie, never changes, front-loaded action, no audio, silent,
+narrated without subtitles, subtitles ending early) and warnings; the
+contact sheet with today's grid rule; `check.json` always written.
 
-The picture is sampled at 5 Hz: ffmpeg pipes 320-pixel-wide grey frames into
-memory. The sample at time `t` counts as a change when more than 0.2% of its
-pixels differ by more than 8 grey levels from the sample at `t - 1s`, today's
-metric compared against one second earlier, so today's thresholds keep their
-meaning while any beat held longer than 0.2 s becomes visible. Audio is
-RMS over 1-second windows on a 0.2-second hop; a window at -45 dBFS or
-louder is speech. (Today uses non-overlapping 1-second windows; the hop is
-new.)
-
-All verdict arithmetic is in seconds, not sample indices:
-
-- `last_change` = time of the last changed sample; `last_talk` = end of the
-  last speech window.
-- **Not a movie**: duration under 1 s, or no video stream.
-- **Front-loaded**: `last_change < 0.40 × duration` and speech continues more
-  than 5 s past `last_change`.
-- **Frozen tail warning**: speech continues more than 15 s past `last_change`.
-- **Mid-movie hold warning**: more than 30 s between consecutive change
-  times.
-- **Never changes**: no changed sample.
-- **No audio**: audio expected and no audio stream.
-- **Silent**: audio expected, present, and no speech window.
-- **No subtitles**: subtitles expected, speech present, and no subtitles
-  found, or subtitles with no cues. As today, a movie with no detected
-  speech never needs subtitles.
-- **Subtitles short**: last cue ends more than 3 s before the speech end
-  (`last_talk`, unless `build` supplies the narration end).
-
-The JSON reports `change_times` and `speech_windows` in seconds.
-
-The contact sheet comes from a separate decode of 12 colour frames at evenly
-spaced times, so it stays in colour, laid out with today's grid rule (4, 3,
-5, or 2 columns, whichever divides the count).
-
-### Standalone flags
-
-`movie check MOVIE [--out DIR] [--subs FILE] [--no-expect-audio]
-[--no-expect-subtitles] [--json]`, as today. Subtitles are found at `--subs`,
-else `<movie stem>.srt` beside the movie, else an embedded track. Standalone
-`check` reads no build state; it judges the movie by what it can measure.
-
-### `check` inside `build`
-
-`build` calls the same check code in-process, passing expectations it
-derives from the scene file and `build.json`, which standalone `check` cannot
-know:
-
-- **Audio expected** when any scene is narrated, or when any `movie` scene's
-  clip contains a speech window by the rule above. A `movie` scene whose
-  track is silent (every movie this tool builds has an audio track) does not
-  count. An unnarrated reel of cards and frames is therefore checked as
-  silent and passes.
-- **Subtitles expected** when any scene is narrated. "Subtitles short"
-  compares against the end of the last narrated scene from `build.json`, not
-  detected speech, so speech inside a `movie` scene (which carries its own
-  subtitles) does not fail the build.
-
-`check.expect_audio` and `check.expect_subtitles` override `auto` with an
-explicit true or false.
+`movie check MOVIE [--no-expect-audio] [--no-expect-subtitles]`. Subtitles
+come from `<movie stem>.srt` beside the movie, else an embedded track, and
+are required only when speech is heard, as today.
 
 ## `term`
 
-### Spike first
+**Spike first**, on real Windows with go-pty: spawn PowerShell 5.1,
+PowerShell 7, and Git Bash with the prompt installed at launch; write input,
+read output, resize; check whether Git Bash loses its first input; check
+that the page's query replies do not double up with ConPTY's own. On the e2e
+image, check a `docker exec` wrapped session. If the pty route fails, this
+section becomes a port of today's ttyd route before planning.
 
-The Windows ConPTY spike comes first. On a real Windows machine, with go-pty,
-it must show that we can: spawn PowerShell 5.1, PowerShell 7, and Git Bash;
-install the status prompt at launch; write input and read output; resize;
-whether Git Bash still loses the first input of a session; and whether a
-child can be kept inside a job object from its first instruction. It also
-checks, on the e2e image, a wrapped `docker exec` session (below). If the pty
-route fails, this section is replaced by a port of today's ttyd route and the
-spec is revised before the plan.
+`movie term serve SESSION --shell bash|powershell|pwsh [--shell-exe PATH]
+[--cwd DIR] [--browser PATH] [-- WRAPPER...]` runs in the foreground as a
+background task. It:
 
-### Session
+1. serves a page on 127.0.0.1 with vendored xterm.js at 1600×900, 17 px,
+   loads it in headless Chrome (software GL), and reads the columns and rows
+   xterm.js lays out;
+2. spawns the shell in a pty of that size, always clean, with a status
+   prompt that reports sequence number, success, exit code, and cwd in an
+   OSC title sequence:
+   - bash: `bash --noprofile --norc -i` with `PROMPT_COMMAND` and `PS1` in
+     its environment; the prompt captures `$?`, then `export -n
+     PROMPT_COMMAND` so nested shells do not inherit it (verified on bash
+     3.2);
+   - PowerShell: `-NoLogo -NoProfile -NoExit -EncodedCommand <prompt
+     script>`;
+   - on Windows, `bash` means Git Bash, found under `ProgramFiles`,
+     `ProgramW6432`, or `LOCALAPPDATA\Programs`, never on PATH (which may
+     hold WSL's); `--shell-exe` overrides;
+   - the launcher's `MSYS_*` variables are removed from the shell's
+     environment;
+3. relays the pty both ways over a websocket, so xterm.js can answer the
+   terminal queries programs send; the page, websocket, and control endpoint
+   require a random token and check the Origin;
+4. runs today's preflight (refuse a blank canvas, save `ready.png`);
+5. writes `SESSION/session.json` (control address and token) and prints
+   `{"ready": true}`.
 
-`movie term serve SESSION --shell bash|zsh|powershell|pwsh|gitbash
-[--shell-exe PATH] [--cwd DIR] [--profile] [--browser PATH] [--size WxH]
-[--font-size N] [-- WRAPPER...]`
+With `-- WRAPPER...` (bash only), the wrapper is a prefix such as
+`docker exec -it CONTAINER`, and `serve` appends
+`env PROMPT_COMMAND=... PS1=... bash --noprofile --norc -i`, so Chrome and
+the binary stay on the host. It works with wrappers that pass arguments
+through unchanged; ssh is not supported.
 
-runs in the foreground, meant to be started as a background task the harness
-keeps alive, as today. In order, it:
+`run SESSION 'cmd' [--record DIR] [--seconds N] [--hold S]` refuses unless
+the shell is at a prompt, writes the command and Enter to the pty, and films
+at 5 fps until the next prompt plus the hold (1.5 s), or `--seconds`.
+`key SESSION NAME` takes `Enter`, `Escape`, `Tab`, the four arrows,
+`Ctrl-C`, or one character, and encodes arrows by the cursor-key mode read
+from xterm.js. `watch` films without input. Each waits up to 30 s for the
+session to become ready, prints JSON (`outcome`, `ok`, `exit_code`, `cwd`,
+frame count), and writes `take.json` with a ready-to-paste `frames` scene.
+Record directories must be new or empty. A slow screenshot repeats the
+previous frame so a take plays at exactly 5 fps.
 
-1. **Opens the page first.** It serves a page on 127.0.0.1 with a vendored
-   xterm.js (MIT) at `--size` (default 1600×900) and `--font-size` (default
-   17), launches Chrome (headless, software GL) through chromedp, loads the
-   page, and reads the columns and rows xterm.js lays out at that size.
-2. **Spawns the shell** in a pty of exactly those columns and rows, so the
-   shell never believes in a different geometry than the picture shows.
-3. **Relays both ways** over a websocket. Output flows to the page. Input
-   from the page is forwarded to the pty, because xterm.js answers terminal
-   queries (cursor position, device attributes, colours) through that path,
-   and programs that ask (fish, crossterm/ratatui TUIs, many agent CLIs)
-   stall without answers. No human types into the headless page, so in
-   practice only those answers flow back. The page URL and websocket both
-   require a random token and check the Origin, so no other page can read or
-   type into the shell.
-4. **Runs today's preflight**: print a dense line, refuse a blank canvas,
-   save `ready.png`.
-5. **Opens a control endpoint** on 127.0.0.1 guarded by the same token, then
-   writes `SESSION/session.json` atomically (endpoint address and token) and
-   prints one JSON line `{"ready": true, ...}`. The existence of
-   `session.json` plus a successful ping of the endpoint is readiness; there
-   are no `ready`, `stop`, or `mark` files.
-
-Raw pty output is appended to `SESSION/terminal.log`.
-
-**Finding the shell.** `--shell-exe` wins. Otherwise `gitbash` looks for
-`Git\bin\bash.exe` under `ProgramFiles`, `ProgramW6432`, and
-`LOCALAPPDATA\Programs`, and never searches PATH, so it cannot pick WSL's
-`bash.exe`. Other shells are found on PATH.
-
-**The status prompt** reports sequence number, success flag, exit code, and
-cwd in an OSC title sequence (BEL- or ST-terminated), which the page never
-shows. It is installed at launch, so nothing is typed on camera:
-
-| Shell | Clean (default) | `--profile` |
-|---|---|---|
-| bash | `bash --noprofile --norc -i`, with the prompt in the `PROMPT_COMMAND` environment variable and `PS1` set | `bash --rcfile OURS -i`, where our rc sources `~/.bashrc` and then sets the prompt |
-| zsh | `ZDOTDIR` pointing at our directory, whose `.zshenv` runs `unsetopt GLOBAL_RCS` (skipping `/etc/zshrc` and friends) and whose `.zshrc` installs a `precmd` hook | our `.zshrc` sources the user's `.zshrc` first |
-| PowerShell | `-NoLogo -NoProfile -NoExit -EncodedCommand <base64 prompt script>` | same without `-NoProfile` |
-| gitbash | as bash | as bash |
-
-The bash prompt command captures `$?` first and then runs
-`export -n PROMPT_COMMAND`, so after the first prompt it is no longer
-exported and a nested bash cannot emit markers of its own. (Verified with
-bash 3.2: status, environment `PS1`, and the unexport all behave under
-`--noprofile --norc`.) `-EncodedCommand` means cwd paths with quotes, `&`,
-brackets, or non-ASCII need no quoting. The filmed shell's environment drops
-`TERM_PROGRAM`, `TERM_PROGRAM_VERSION`, `TERM_SESSION_ID`,
-`MSYS_NO_PATHCONV`, and `MSYS2_ARG_CONV_EXCL`, which would otherwise make
-macOS's session restore or the launcher's settings leak into the take. After
-the first prompt, `serve` checks the reported cwd against `--cwd` (default:
-the current directory; by leaf name for Git Bash's `/c/...` paths), as today.
-
-**Wrapped shells**, for a container or a remote host, so the binary and
-Chrome stay on the host and nothing of ours enters the target:
-`-- docker exec -it CONTAINER` or `-- ssh -t HOST`. The wrapper is a prefix;
-`serve` appends the target command itself:
-`env PROMPT_COMMAND=<prompt> PS1=<ps1> bash --noprofile --norc -i`. For
-`ssh`, which joins its arguments into one remote command line, `serve` passes
-that command as a single shell-quoted argument. The prompt travels in the
-command line, not through environment forwarding, so it needs no `AcceptEnv`
-on the server. Wrapped sessions:
-
-- support `--shell bash` only;
-- check the cwd only when `--cwd` is given, against the target's path
-  exactly;
-- are always clean; `--profile` is refused;
-- on `close`, get `exit` typed into the shell (after a Ctrl-C) before the
-  local wrapper process tree is killed, because killing the `docker exec` or
-  `ssh` client does not reliably end what it started on the other side.
-
-`movie term wait SESSION [--seconds 60]` blocks until the session is ready,
-replacing the polling loops the docs currently show in PowerShell and Bash.
-`run`, `key`, and `watch` exit 2 at once if it is not ready.
-
-### Filming
-
-`run SESSION 'cmd'` refuses unless the shell is at a prompt, so keys cannot
-land in a running program's stdin. It writes the command and Enter to the pty
-directly, then films at 5 fps into `--record DIR` until the next prompt plus
-`--hold` seconds (default 1.5), or `--seconds`. `watch` films without input,
-waiting for the prompt after the last `run` or `key`. Each prints JSON with
-`outcome`, `ok`, `exit_code`, `cwd`, and frame count, and writes `take.json`
-(including a ready-to-paste `frames` scene) beside the frames. Record and
-session directories must be new or empty, checked before any input is sent.
-
-`key SESSION NAME` takes the names today's recorder takes: `Enter`,
-`Escape`, `Tab`, `ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`,
-`Ctrl-C`, or one printable character. Before writing arrow keys it reads the
-cursor-key mode from the page (xterm.js tracks it), so arrows are sent as
-`ESC O x` in application mode and `ESC [ x` otherwise, as a real terminal
-would.
-
-Frame timing is today's rule, as a pure function over capture timestamps:
-frames land on the 5 fps grid, a slow capture repeats the previous frame into
-missed slots, and the take ends exactly at its endpoint.
-
-### Cleanup
-
-`close` asks the daemon to exit and waits up to 30 s for its confirmation.
-The daemon kills the whole process tree of everything it started, and
-nothing else, using only process handles it holds, never PIDs read back from
-files. On Unix it walks descendants of the shell and Chrome (a pty child
-starts its own session, so a process group is not enough). On Windows it
-uses `taskkill /T /F` on each child it started, as today, and it also places
-itself in a kill-on-close job object at startup, so if the daemon itself is
-killed its children die with it. `close` exits 1 when cleanup cannot be
-confirmed.
+`close` asks `serve` to exit; it kills the process trees it started (Unix:
+descendants; Windows: `taskkill /T /F`), using handles it holds, never PIDs
+from files, and exits 1 if it cannot confirm cleanup. Processes a wrapper
+started on the other side (inside a container) are not its to kill.
 
 ## `browse`
 
-Built last, and specified in its own design before its plan. The outline: a
-scene file lists actions (`goto`, `wait_for`, `click`, `type`, `append`,
-`select`, `pause`); the recorder drives Chrome through chromedp with the
-cursor overlay built in, types at human pace, races every screenshot against
-a short timeout, and writes a frames directory `build` can use.
-
-## Chrome discovery
-
-Shared by cards, `term`, and `browse`: an explicit `--browser` wins and fails
-loudly if unusable; otherwise search Chrome, Chromium (`chromium`,
-`chromium-browser`), and Edge, including the Windows install locations under
-`LOCALAPPDATA`, `PROGRAMFILES`, `PROGRAMFILES(X86)`, and `PROGRAMW6432`, as
-`browser_tools.py` does today. `build`, `assemble`, and `term serve` take
-`--browser`.
+Built last, from its own design. Outline: scene actions (`goto`, `wait_for`,
+`click`, `type`, `pause`), a built-in cursor overlay, human-paced typing,
+screenshots raced against a short timeout, output a `frames` directory.
 
 ## Testing
 
-- Go `testing`, no mocks anywhere.
-- **Unit tests** for every pure function: check verdicts from synthetic
-  series, cue timing, scene validation, staleness rules, narration
-  acceptance (including a one-word preamble and a dropped clause for
-  `openai-chat`), status-prompt parsing (BEL and ST terminators, semicolons
-  in cwd), key encoding in both cursor-key modes, the frame scheduler, the
-  launcher's platform mapping, and Chrome candidate ordering per platform.
-- **Black-box tests** run the built binary against movies generated at test
-  time from ffmpeg's lavfi sources, ported from today's real-media suites
-  (`test_assembly`, `test_checker`, `test_paths`, and the real-media parts of
-  `test_subtitles`, including the burn-failure fallback), plus an unnarrated
-  build and a build whose only speech is inside a `movie` scene. Paths with
-  spaces, quotes, percent signs, brackets, and non-ASCII characters stay
-  covered.
-- **Card rendering**: a real browser renders a card at an awkward path, and a
-  render timeout kills only the processes it started.
-- **`term`** tests run a real pty and real headless Chrome: run, key (arrows
-  inside a program that turns on application cursor mode), watch,
-  still-running, failed commands, a program that queries the cursor position,
-  and close killing the shell tree while sparing an unrelated process.
-  `MOVIE_TEST_SHELL` and `MOVIE_TEST_SHELL_EXE` select the shell, as today.
-- **The freshness test** under "Shipping".
-- **Narration** tests that need the network or Piper run when a key or
-  `piper` is present.
-- **Skips are loud and can be made fatal.** Every skip names what is missing.
-  `MOVIE_REQUIRE=chrome,piper,openai,...` turns the named skips into
-  failures, replacing `run-tests.py --require-capabilities`.
-- **CI**: a GitHub Actions matrix on macOS, Linux, and Windows. The Linux job
-  installs Chrome, Piper, and the default voice and sets
-  `MOVIE_REQUIRE=chrome,piper`, so narration and narrated builds are always
-  exercised. The Windows job runs the `term` tests under PowerShell 5.1,
-  PowerShell 7, and Git Bash.
+- Go `testing`, no mocks.
+- Unit tests for the pure functions listed under "Layout".
+- Black-box tests run the binary on movies generated at test time with
+  ffmpeg's lavfi sources, ported from today's `test_checker`,
+  `test_assembly`, `test_paths`, and `test_subtitles`, plus an unnarrated
+  build and awkward paths (spaces, quotes, `%`, brackets, non-ASCII).
+- `term` tests use a real pty and real headless Chrome, including arrows in
+  application cursor mode, a program that queries the cursor position, a
+  still-running command, and close sparing an unrelated process.
+  `MOVIE_TEST_SHELL` and `MOVIE_TEST_SHELL_EXE` pick the shell.
+- Tests needing Chrome, Piper, or a key skip with a message naming what is
+  missing.
+- CI on macOS, Linux, and Windows. Setup steps install Chrome and Piper and
+  fail if they cannot, so those tests never skip in CI. Windows runs `term`
+  under PowerShell 5.1, PowerShell 7, and Git Bash.
 
-The Python tests are deleted as their code is replaced. Each real behavior
-they assert is carried into a unit or black-box test first; tests that only
-exercise fake processes, fake CDP, or patched internals
-(`test_recorder_contract.py`, most of `test_narration_contract.py`,
-`test_subtitle_contract.py`, and `test_narration.py`) are not ported as such.
+Python tests are deleted with the code they cover, after their real
+behaviors are carried into Go tests; the mock-world tests are not ported.
 
-## Sub-projects and order
+## Order
 
-Each gets its own implementation plan and deletes the Python it replaces in
-the same change.
-
-1. **Core and `check`**: Go module, `.gitattributes`, launcher,
-   `script/build-binaries`, freshness test, CI, `movie version`,
-   `movie check`. Deletes `check-movie` and its tests; SKILL.md points at
-   `movie check`.
-2. **`build`**: scene file, state, narrate, assemble, subtitles, burn, build,
-   Chrome discovery for cards. Deletes the remaining pipeline scripts,
-   `media_paths.py`, `narration_contract.py`, their tests, the ASR docs, and
-   the Windows pipeline sections; converts `examples/e2e/scenes.yaml`; and
-   updates the e2e `Dockerfile` and README to install the `piper` CLI.
-   `browser_tools.py` stays, because the Windows recorder still imports it.
-3. **`term`**: ConPTY spike, then the recorder. Deletes both
-   `film-terminal.py` files, `browser_tools.py`, and their tests; rewrites
-   `recording-a-terminal.md` and moves the e2e demo to a wrapped
-   `docker exec` session.
+1. **Core and `check`**: module, launcher, build script, freshness test, CI,
+   `movie check`. Deletes `check-movie` and its tests.
+2. **`build`**. Deletes the other pipeline scripts, `media_paths.py`,
+   `narration_contract.py`, their tests, the ASR and Windows-pipeline docs;
+   converts `examples/e2e/scenes.yaml`; installs the `piper` CLI in the e2e
+   Dockerfile. Keeps `browser_tools.py`, which the Windows recorder imports.
+3. **`term`**: spike, then recorder. Deletes both `film-terminal.py` files,
+   `browser_tools.py`, and their tests; rewrites `recording-a-terminal.md`;
+   moves the e2e demo to a `docker exec` wrapped session.
 4. **`browse`**: its own design first.
+
+## Known losses
+
+- No per-stage commands; rerunning any part reruns `build` (narration is
+  cached).
+- No phonetic respelling separate from the subtitles.
+- Cards use the Go fonts: Latin, Greek, and Cyrillic only.
+- `movie` scenes fill the frame; no inset or gain control.
+- No subtitle styling or cue-length options.
+- Filmed shells are always clean (no user startup files); no zsh; no ssh.
+- Rejected narration attempts are not kept on disk.
 
 ## Risks
 
-- **ConPTY behavior on Windows** is the largest unknown; the spike decides it.
-- **Terminal queries on Windows**: ConPTY answers some queries itself; the
-  spike confirms replies from the page do not double up.
-- **Piper's CLI** is Python-packaged, so the keyless voice needs uv to install
-  it once. The skill does not do that install itself.
-- **Repo size** grows by five binaries (on the order of 10 MB each) per
-  release that changes build inputs.
-- **The pace range** is a guess until tuned against real clips, and it is a
-  coarse check by design.
+- ConPTY behavior on Windows; the spike decides.
+- Piper's CLI is Python-packaged, so the keyless voice needs uv once.
+- Five binaries, roughly 10 MB each, per release that changes Go source.
