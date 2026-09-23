@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/prime-radiant-inc/proving-it-works/internal/build"
 	"github.com/prime-radiant-inc/proving-it-works/internal/check"
 	"github.com/prime-radiant-inc/proving-it-works/internal/exitcode"
 )
@@ -31,6 +32,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "help", "-h", "--help":
 		fmt.Fprint(stdout, usage)
 		return exitcode.OK
+	case "build":
+		return build.Main(args[1:], stdout, stderr)
 	case "check":
 		return check.Main(args[1:], stdout, stderr)
 	}
