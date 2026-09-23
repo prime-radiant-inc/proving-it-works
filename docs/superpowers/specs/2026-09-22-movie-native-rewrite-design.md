@@ -33,7 +33,7 @@ because `uv` shebangs do not run on Windows.
 | Speech recognition | None. |
 | Engines | `openai`, `openai-chat`, `piper`. |
 | Scene file | New format, no backward compatibility. |
-| Terminal | Code: run a scripted session in a pty, record the output, render frames offline. No browser. Gated on a spike. |
+| Terminal | Code: a live pty session the agent drives command by command, recorded and rendered to frames at the end. No browser. Gated on a spike. |
 | Browser apps, desktop capture, log reels, stills | Instructions in the skill, not code. |
 
 ## Commands
@@ -42,11 +42,11 @@ because `uv` shebangs do not run on Windows.
 |---|---|
 | `movie build SCENES.yaml OUT.mp4` | narrate, assemble, subtitle, burn, check |
 | `movie check MOVIE` | the gate, on any movie |
-| `movie term SCRIPT.yaml OUTDIR` | film a scripted terminal session into frames |
+| `movie term start / run / type / key / wait / screen / film / stop` | drive a terminal session and render it into frames |
 
 Exit codes: 0 success; 1 negative verdict (not shippable, narration
-rejected, a filmed command failed or timed out); 2 usage or environment
-error.
+rejected, a filmed command failed); 2 usage or environment error; 3 `term`
+only, the command is still running when the timeout passes.
 
 ## Layout and shipping
 
@@ -66,8 +66,8 @@ script/build-binaries
 ```
 
 Decisions are pure functions over plain data (the check verdict, cue timing,
-the openai-chat gate, scene and script validation, key encoding, frame
-timing, idle-gap handling), tested directly with no mocks.
+the openai-chat gate, scene validation, prompt-marker parsing, key
+encoding, frame timing, idle-gap handling), tested directly with no mocks.
 
 **Launcher.** `bin/movie` maps `uname` to a binary and `exec`s it with
 `"$@"`. On Git Bash (`MINGW*`/`MSYS*`/`CYGWIN*`) it first exports
@@ -199,11 +199,13 @@ are required only when speech is heard, as today.
 
 ## `term`
 
-Record, then render. One process runs a scripted session in a real pty,
-records every byte the shell writes with its timestamp, and afterwards
-replays that recording through a terminal emulator and draws frames. No
-browser, no daemon, no session files, and no screenshot lag: the frames
-show exactly what the terminal showed, when it showed it.
+A live session the agent drives one command at a time, recorded and
+rendered afterwards. Terminal work here is one-off: the agent drives it with
+its own tool calls, a sub-agent, or a bespoke script, reacting to what it
+sees. The session process owns a real pty and a live terminal emulator,
+records every byte the shell writes with its timestamp, and at the end
+replays the recording to draw frames. No browser and no screenshot lag: the
+frames show exactly what the terminal showed, when it showed it.
 
 ### Spike first
 
@@ -225,55 +227,41 @@ It also checks a `docker exec` wrapped session on the e2e image. If
 fidelity fails, the fallback is today's approach (xterm.js in headless
 Chrome) and the spec is revised before planning.
 
-### The script
+### Verbs
 
-```yaml
-shell: bash                  # bash | powershell | pwsh; default bash
-cwd: work/                   # default: the script's directory
-size: 120x34                 # columns x rows; default 120x34
-wrap: [docker, exec, -it, provdemo]   # optional, bash only
-
-steps:
-  - run: claude plugin list
-  - pause: 2
-  - run: claude plugin install proving-it-works
-    timeout: 120
-  - run: claude -p "make the movie"
-    film: false              # happens, but off camera
-    timeout: 900
-  - run: ls -la out/
-  - key: q
-```
-
-| Step | Does |
+| Verb | Does |
 |---|---|
-| `run: CMD` | wait for the prompt, type `CMD` at human pace, press Enter, wait for the next prompt (up to `timeout`, default 60 s) |
-| `key: NAME` | press `Enter`, `Escape`, `Tab`, an arrow, `Ctrl-C`, or one character; arrows follow the terminal's cursor-key mode |
-| `pause: SECONDS` | hold |
-| `wait: SECONDS` | wait for output to go quiet for that long, for TUIs with no prompt to wait for |
+| `start SESSION [--shell bash\|powershell\|pwsh] [--shell-exe PATH] [--cwd DIR] [--size COLSxROWS] [-- WRAPPER...]` | runs in the foreground, as a background task the harness keeps alive; owns the pty and emulator; writes `SESSION/session.log`; default size 120x34 |
+| `run SESSION 'cmd' [--timeout S]` | refuse unless the shell is at a prompt; type the command at human pace; press Enter; wait for the next prompt (default 60 s); print the exit code and the screen as text |
+| `type SESSION 'text'` | type into whatever is running, with no prompt check (a TUI's own input box) |
+| `key SESSION NAME` | `Enter`, `Escape`, `Tab`, an arrow, `Ctrl-C`, or one character; arrows follow the terminal's cursor-key mode |
+| `wait SESSION [--quiet S] [--timeout S]` | wait for the next prompt, or for output to go quiet for `--quiet` seconds; print the screen |
+| `screen SESSION` | print the current screen as text |
+| `film SESSION on\|off` | filming is on at start; `off` keeps what follows out of the movie, and each `on` starts a new take |
+| `stop SESSION OUTDIR` | end the session, kill its process tree, render the takes |
 
-Any step can carry `film: false`. A `run` whose command fails, or that
-times out, stops the script with exit 1 unless it has `may_fail: true`.
-Typing only ever happens at a prompt, so keys cannot land in a running
-program's stdin.
+`run` and `wait` exit 0 when the shell reports success, 1 when it reports
+failure, and 3 when the timeout passes with the command still running, so
+the caller can wait again or send `Ctrl-C`. Every verb waits up to 30 s for
+the session to come up.
+
+The verbs reach `start` over a localhost HTTP endpoint guarded by a random
+token; `start` writes both to `SESSION/session.json` once the shell has shown
+its first prompt. Because the emulator runs live inside `start`, it answers
+the terminal queries programs send, and `screen` can show the agent what is
+on screen as text, which is how a driver decides what to do next.
 
 ### Output
 
-`movie term demo-install.yaml takes/install` writes:
+`stop SESSION takes/install` writes `take-1/`, `take-2/`, ...: one PNG
+directory per filmed stretch, rendered at 10 fps from the recording, each
+with a `take.json` holding a ready-to-paste `frames` scene.
+`SESSION/session.log` stays for re-rendering or inspection.
 
-- `takes/install/take-1/`, `take-2/`, ...: one PNG directory per stretch of
-  filmed steps (a `film: false` step ends one take and the next filmed step
-  starts another), rendered at 10 fps, each with a `take.json` holding a
-  ready-to-paste `frames` scene;
-- `takes/install/session.log`: the raw recording, with timestamps, for
-  re-rendering or inspection;
-- a one-line summary per step on stdout: command, exit code, duration.
-
-Frames are 1600×900 by default (`--px WxH`), drawn with an embedded
-monospace font with wide glyph coverage (DejaVu Sans Mono, under its
-permissive license). Output quiet for more than 3 s inside a filmed take is
-shortened to 3 s, so a slow step does not become dead air; the step summary
-reports the real durations.
+Frames are 1600×900 by default (`--px WxH` on `stop`), drawn with an
+embedded monospace font with wide glyph coverage (DejaVu Sans Mono, under
+its permissive license). Output quiet for more than 3 s inside a take is
+shortened to 3 s, so a slow command does not become dead air.
 
 ### The shell
 
@@ -295,9 +283,10 @@ sequence the renderer never draws:
   stays on the host and nothing of ours enters the container. It works with
   wrappers that pass arguments through unchanged; ssh is not supported.
 
-When the script ends or fails, `movie term` kills the process tree it
+On `stop`, or if `start` is interrupted, it kills the process tree it
 started (Unix: descendants; Windows: `taskkill /T /F`) using the handles it
-holds.
+holds, never PIDs read from files. Processes a wrapper started on the other
+side (inside a container) are not its to kill.
 
 ## Instructions in the skill
 
@@ -323,8 +312,9 @@ ending in a `frames` directory, image, or clip that `build` takes:
   ffmpeg's lavfi sources, ported from today's `test_checker`,
   `test_assembly`, `test_paths`, and `test_subtitles`, plus an unnarrated
   build and awkward paths (spaces, quotes, `%`, brackets, non-ASCII).
-- `term` tests run real scripts in a real pty: a failing command, a timeout,
-  `film: false` splitting takes, arrows in application cursor mode, a
+- `term` tests drive a real session through the verbs: a failing command, a
+  timeout returning 3, `run` refusing while a command runs, `film off`/`on`
+  splitting takes, `screen` text, arrows in application cursor mode, a
   program that queries the cursor position, idle shortening, and cleanup
   sparing an unrelated process. Rendering is tested by replaying committed
   recordings and comparing frames with committed expected PNGs.
@@ -361,8 +351,8 @@ behaviors are carried into Go tests; the mock-world tests are not ported.
 - `movie` scenes fill the frame; no inset or gain control.
 - No subtitle styling or cue-length options.
 - Rejected narration attempts are not kept on disk.
-- Terminal sessions are scripted up front, not driven step by step across
-  tool calls; always clean (no user startup files); no zsh; no ssh.
+- Terminal sessions are always clean (no user startup files); no zsh; no
+  ssh.
 - No tool for browser apps or desktop capture; agents follow the
   instructions.
 
