@@ -84,8 +84,10 @@ the exact version in `go.mod` (the `toolchain` line if present, else the
 `GOAMD64=v1`, `GOARM64=v8.0`, `CGO_ENABLED=0`, `-trimpath`,
 `-buildvcs=false`, `-ldflags "-s -w"`. `.gitattributes` forces LF on sources
 and marks `bin/*` and fonts binary. A test rebuilds all five and
-byte-compares them with the committed ones. Binaries are committed with the
-source change that alters them.
+byte-compares them with the committed ones; CI runs it on `main`. Binaries
+are rebuilt and committed when work lands on `main`, not on every commit of
+a work branch, so the repository grows by one set of binaries per release
+rather than one per commit.
 
 **Prerequisites.** ffmpeg and ffprobe everywhere. tmux for `term` (inside
 the container too, when filming one). For the keyless voice, Piper
@@ -236,12 +238,16 @@ shows; this is for one-off movies.
 
 `start` and `stop` refuse a non-empty `SESSION` or `OUTDIR`.
 
-**The session.** `start` runs a private tmux server on
-`SESSION/tmux.sock`, so it never touches the user's own tmux, and in it
-`env -i` with a fixed environment and `bash --noprofile --norc -i`:
-`TERM=xterm-256color`, `HOME`, `PATH`, `BASH_SILENCE_DEPRECATION_WARNING=1`
-(no macOS zsh banner), `HISTFILE=SESSION/history` (never the user's
-history), `PS1`, and a `PROMPT_COMMAND` that captures `$?`, runs
+**The session.** `start` runs a private tmux server on a socket in `/tmp`
+named by a hash of the session directory (Unix socket paths are limited to
+about 100 bytes), started with `-f /dev/null` so it never reads the user's
+tmux configuration or touches their tmux. In it runs
+`bash --noprofile --norc -i` under `env`, which removes `TERM_PROGRAM`,
+`TERM_PROGRAM_VERSION`, `TERM_SESSION_ID`, `TMUX`, and the launcher's
+`MSYS_*` variables, keeps the target's own `HOME` and `PATH`, and sets
+`TERM=xterm-256color`, `BASH_SILENCE_DEPRECATION_WARNING=1` (no macOS zsh
+banner), `HISTFILE` to a session file (never the user's history), `PS1`,
+and a `PROMPT_COMMAND` that captures `$?`, runs
 `export -n PROMPT_COMMAND` so nested shells do not inherit it, and sets the
 title to `MOVIE;<sequence>;<status>` (verified with bash 3.2 and tmux 3.5a:
 the marker appears in `#{pane_title}`). After the first prompt, `start`
