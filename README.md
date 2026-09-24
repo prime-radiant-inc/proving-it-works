@@ -134,7 +134,7 @@ sessions.
 
 ## Credits
 
-The composited-stills and log-rendered-reel routes are adapted from
+The stills and log-rendered-reel routes are adapted from
 `rendering-a-demo-movie.md` and `recording-a-proof-movie.md` in
 [obra/superpowers](https://github.com/obra/superpowers) PR #1931 (MIT).
 The rest comes from producing a real narrated product tutorial and from the

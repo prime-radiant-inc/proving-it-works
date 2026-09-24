@@ -1,8 +1,8 @@
-# Composited stills
+# Stills
 
 The cheap route, and the right one whenever the *sequence of states* is the
 claim and motion is decoration. Real screenshots of the running product,
-captioned, held long enough to read.
+held long enough to read, with subtitles carrying the words.
 
 Adapted from `rendering-a-demo-movie.md` in obra/superpowers PR #1931.
 

@@ -132,19 +132,22 @@ at a still: when screen-recording permission is missing, capture
 ```bash
 # macOS: list devices, then capture screen N (grant Screen Recording to your terminal)
 ffmpeg -f avfoundation -list_devices true -i ""
+mkdir -p check
 ffmpeg -nostdin -f avfoundation -framerate 10 -capture_cursor 1 -i 'N:none' -t 2 -vf fps=10 check/f%04d.png
 
 # Linux (X11)
+mkdir -p check
 ffmpeg -nostdin -f x11grab -framerate 10 -i "$DISPLAY" -t 2 -vf fps=10 check/f%04d.png
 ```
 
 ```powershell
 # Windows: one window by its exact title
+New-Item -ItemType Directory -Force check | Out-Null
 ffmpeg -nostdin -f gdigrab -framerate 10 -i 'title=Your application window title' -t 2 -vf fps=10 check/f%04d.png
 ```
 
 Look at `check/f0010.png`. Only visible application pixels are a capture;
-wallpaper or a blank window means permission is blocked. Then capture the
-real take into a new directory and use it as `frames: that-directory`,
+wallpaper or a blank window means permission is blocked. Then create a new
+directory for the real take and use it as `frames: that-directory`,
 `rate: 10`. If no capture shows the app, use the browser route or a reel
 rendered from the log, and say what remains unproven.
