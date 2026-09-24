@@ -35,10 +35,7 @@ func Run(scenePath, out string, stdout io.Writer) (int, error) {
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 		return 0, err
 	}
-	// Narration clips are cached by the scene file, not by out: rebuilding the
-	// same scenes to a different output must still reuse them.
-	narrationScratch := strings.TrimSuffix(f.Path, filepath.Ext(f.Path)) + ".build"
-	clips, err := narrateAll(f, narrationScratch, stdout)
+	clips, err := narrateAll(f, scratch, stdout)
 	if err != nil {
 		var rejected *narrate.RejectedError
 		if errors.As(err, &rejected) {

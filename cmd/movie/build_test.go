@@ -171,7 +171,7 @@ scenes:
 	if speech < 2 || segment < speech-0.05 {
 		t.Fatalf("clip %.2fs, segment %.2fs", speech, segment)
 	}
-	again := runMovie(t, dir, "build", "demo.yaml", "demo2.mp4")
+	again := runMovie(t, dir, "build", "demo.yaml", "demo.mp4")
 	if !strings.Contains(again.stdout, "cached") {
 		t.Fatalf("second build did not reuse the clip:\n%s", again.stdout)
 	}

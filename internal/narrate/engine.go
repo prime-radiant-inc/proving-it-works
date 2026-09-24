@@ -21,15 +21,17 @@ type Engine interface {
 }
 
 // Resolve picks the engine: auto means openai when a key exists, else piper.
+// piper never looks up a key: openAIKey can shell out to the llm CLI, which
+// has nothing to do with a build that never touches OpenAI.
 func Resolve(name string) (Engine, error) {
-	key := openAIKey()
 	switch name {
 	case "auto":
-		if key != "" {
+		if key := openAIKey(); key != "" {
 			return openAI{key: key}, nil
 		}
 		return piper{}, nil
 	case "openai", "openai-chat":
+		key := openAIKey()
 		if key == "" {
 			return nil, errors.New("no OPENAI_API_KEY (and `llm keys get openai` found nothing); " +
 				"use engine: piper for a local voice")
