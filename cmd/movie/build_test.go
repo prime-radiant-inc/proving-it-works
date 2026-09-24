@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -66,5 +67,60 @@ scenes:
 	assertNear(t, "movie duration", testmedia.Duration(t, filepath.Join(dir, "demo.mp4")), 5, 0.2)
 	if !strings.Contains(r.stdout, "Mechanical checks pass") {
 		t.Fatalf("build did not run the check:\n%s", r.stdout)
+	}
+}
+
+// awkward is a directory name that breaks every naive ffmpeg path handling.
+const awkward = "awk %d [x] 'q' λ & more"
+
+func TestBuildHandlesEverySceneKindAtAwkwardPaths(t *testing.T) {
+	testmedia.Require(t, "ffmpeg", "ffprobe")
+	dir := filepath.Join(t.TempDir(), awkward)
+	still(t, dir, "media/shot %03d.png", "red")
+	for i, c := range []string{"red", "green", "blue", "white", "black"} {
+		still(t, dir, filepath.Join("media", "frames [1]", fmt.Sprintf("f%02d.png", i)), c)
+	}
+	testmedia.FFmpeg(t, dir, "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=10:d=2",
+		"-f", "lavfi", "-i", "sine=frequency=300:duration=2",
+		"-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", "media/with sound.mp4")
+	testmedia.FFmpeg(t, dir, "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=10:d=1.5",
+		"-c:v", "libx264", "-pix_fmt", "yuv420p", "media/silent 100%.mp4")
+	writeFile(t, dir, "demo.yaml", `size: 320x180
+fps: 10
+scenes:
+  - id: shot
+    image: "media/shot %03d.png"
+    duration: 1
+  - id: run
+    frames: "media/frames [1]"
+    rate: 2.5
+  - id: loud
+    movie: "media/with sound.mp4"
+  - id: quiet
+    movie: "media/silent 100%.mp4"
+`)
+	r := runMovie(t, dir, "build", "demo.yaml", "out/final cut.mp4")
+	if r.code != 0 {
+		t.Fatalf("code %d\n%s%s", r.code, r.stdout, r.stderr)
+	}
+	// 1 + 5/2.5 + 2 + 1.5
+	assertNear(t, "movie duration", testmedia.Duration(t, filepath.Join(dir, "out", "final cut.mp4")), 6.5, 0.3)
+	for _, line := range []string{"shot: 1.0s", "run: 2.0s", "loud: 2.0s", "quiet: 1.5s"} {
+		if !strings.Contains(r.stdout, line) {
+			t.Errorf("missing %q in\n%s", line, r.stdout)
+		}
+	}
+}
+
+func TestBuildRejectsAnInvalidSceneFileBeforeEncoding(t *testing.T) {
+	testmedia.Require(t, "ffmpeg", "ffprobe")
+	dir := t.TempDir()
+	writeFile(t, dir, "demo.yaml", "scenes:\n  - id: x\n    image: nope.png\n")
+	r := runMovie(t, dir, "build", "demo.yaml", "demo.mp4")
+	if r.code != 2 || !strings.Contains(r.stderr, "no such image") {
+		t.Fatalf("code %d\n%s", r.code, r.stderr)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "demo.build")); err == nil {
+		t.Fatal("scratch was created for an invalid scene file")
 	}
 }

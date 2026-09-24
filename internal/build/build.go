@@ -29,26 +29,17 @@ func Run(scenePath, out string, stdout io.Writer) (int, error) {
 	if err := os.MkdirAll(scratch, 0o755); err != nil {
 		return 0, err
 	}
+	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+		return 0, err
+	}
 	var names []string
 	for _, sc := range f.Scenes {
-		if sc.Kind != scene.Image {
-			return 0, fmt.Errorf("scene %s: %s scenes arrive in the next task", sc.ID, sc.Kind)
-		}
-		name := sc.ID + ".mp4"
-		pngs := streamFiles([]string{sc.Source})
-		err := encodeStill(scratch, name, f, pngs, float64(f.FPS), 1, sc.Duration, "")
-		if cerr := pngs.Close(); cerr != nil {
-			err = cerr
-		}
-		if err != nil {
-			return 0, fmt.Errorf("scene %s: %w", sc.ID, err)
-		}
-		info, err := ffmpeg.Probe(filepath.Join(scratch, name))
+		d, err := segment(scratch, f, sc, "", 0)
 		if err != nil {
 			return 0, err
 		}
-		fmt.Fprintf(stdout, "%s: %.1fs\n", sc.ID, info.Duration)
-		names = append(names, name)
+		fmt.Fprintf(stdout, "%s: %.1fs\n", sc.ID, d)
+		names = append(names, sc.ID+".mp4")
 	}
 	if err := concat(scratch, names, out); err != nil {
 		return 0, err

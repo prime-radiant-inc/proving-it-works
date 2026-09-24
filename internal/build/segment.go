@@ -6,6 +6,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 
@@ -101,4 +102,59 @@ func (fs *fileStream) Close() error {
 		}
 	})
 	return fs.closeErr
+}
+
+// segment encodes one scene into scratch/<id>.mp4 and returns its measured
+// duration. wav and speech are the scene's narration clip and its length, or
+// "" and 0. A still or frames scene lasts max(narration, visuals).
+func segment(scratch string, f *scene.File, sc scene.Scene, wav string, speech float64) (float64, error) {
+	name := sc.ID + ".mp4"
+	var err error
+	switch sc.Kind {
+	case scene.Movie:
+		err = encodeMovie(scratch, name, f, sc.Source)
+	case scene.Frames:
+		frames := scene.PNGs(sc.Source)
+		pngs := streamFiles(frames)
+		err = encodeStill(scratch, name, f, pngs, sc.Rate, len(frames), max(speech, float64(len(frames))/sc.Rate), wav)
+		if cerr := pngs.Close(); cerr != nil {
+			err = cerr
+		}
+	case scene.Image:
+		pngs := streamFiles([]string{sc.Source})
+		err = encodeStill(scratch, name, f, pngs, float64(f.FPS), 1, max(speech, sc.Duration), wav)
+		if cerr := pngs.Close(); cerr != nil {
+			err = cerr
+		}
+	default:
+		err = fmt.Errorf("%s scenes arrive in the next task", sc.Kind)
+	}
+	if err != nil {
+		return 0, fmt.Errorf("scene %s: %w", sc.ID, err)
+	}
+	info, err := ffmpeg.Probe(filepath.Join(scratch, name))
+	if err != nil {
+		return 0, err
+	}
+	return info.Duration, nil
+}
+
+// encodeMovie plays an existing movie as itself, scaled to fit, with its own
+// audio, or silence when it has none (concat needs every segment to have an
+// audio stream).
+func encodeMovie(scratch, name string, f *scene.File, src string) error {
+	info, err := ffmpeg.Probe(src)
+	if err != nil {
+		return err
+	}
+	args := []string{"-i", src}
+	audio := "0:a:0"
+	if !info.Has("audio") {
+		args = append(args, "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo")
+		audio = "1:a:0"
+	}
+	args = append(args, "-vf", fit(f.Width, f.Height), "-af", "apad", "-r", strconv.Itoa(f.FPS),
+		"-t", fmt.Sprintf("%.3f", info.Duration), "-map", "0:v:0", "-map", audio)
+	args = append(append(args, encodeArgs...), name)
+	return ffmpeg.Run(scratch, nil, args...)
 }
