@@ -23,8 +23,8 @@ jobs:
       - name: Install ffmpeg (Windows)
         if: runner.os == 'Windows'
         run: choco install ffmpeg -y
-      - name: Install Piper and its default voice (Linux)
-        if: runner.os == 'Linux'
+      - name: Install Piper and its default voice (Linux and macOS)
+        if: runner.os == 'Linux' || runner.os == 'macOS'
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
           export PATH="$HOME/.local/bin:$PATH"

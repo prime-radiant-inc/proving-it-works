@@ -50,7 +50,7 @@ scenes:
       and look at it.
 
   - id: sheet
-    image: work/out/hostcheck/contact-sheet.png
+    image: work/out/counter-check/contact-sheet.png
     narration: >-
       So we do. Zero, one, two, with the cursor on the button and the
       subtitles under it. The plugin installed from a public marketplace,
