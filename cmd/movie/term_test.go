@@ -6,10 +6,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/prime-radiant-inc/proving-it-works/internal/term"
 	"github.com/prime-radiant-inc/proving-it-works/internal/testmedia"
 )
 
@@ -58,13 +60,38 @@ func TestTermFilmsACommandIntoFrames(t *testing.T) {
 		t.Fatalf("stop: code %d\n%s%s", r.code, r.stdout, r.stderr)
 	}
 	frames, _ := filepath.Glob(filepath.Join(takes, "take-1", "f*.png"))
-	if len(frames) < 5 {
-		t.Fatalf("take-1 has %d frames", len(frames))
+	if len(frames) < 15 {
+		t.Fatalf("take-1 has %d frames, want at least 15 (the final screen held 1.5s)", len(frames))
 	}
 	var take struct{ Rate float64 }
 	data, err := os.ReadFile(filepath.Join(takes, "take-1", "take.json"))
 	if err != nil || json.Unmarshal(data, &take) != nil || take.Rate != 10 {
 		t.Fatalf("take.json: %s %v", data, err)
+	}
+
+	// The last non-end entry of the recording is the flush snapshot Stop
+	// asked the recorder for: it must show the command's actual output, not
+	// just the typed command.
+	recording, err := os.ReadFile(filepath.Join(session, "recording.jsonl"))
+	if err != nil {
+		t.Fatalf("recording.jsonl: %v", err)
+	}
+	var last term.Entry
+	found := false
+	for _, line := range strings.Split(strings.TrimRight(string(recording), "\n"), "\n") {
+		var e term.Entry
+		if json.Unmarshal([]byte(line), &e) != nil {
+			continue
+		}
+		if !e.End {
+			last, found = e, true
+		}
+	}
+	if !found {
+		t.Fatal("recording.jsonl has no non-end entries")
+	}
+	if !slices.Contains(strings.Split(last.Screen, "\n"), "proving-it-works") {
+		t.Fatalf("last non-end entry's screen has no line exactly \"proving-it-works\":\n%q", last.Screen)
 	}
 }
 

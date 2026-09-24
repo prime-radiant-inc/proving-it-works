@@ -81,17 +81,27 @@ func readRecording(dir string) ([]Entry, error) {
 		return nil, err
 	}
 	defer f.Close()
-	var entries []Entry
+	var lines []string
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 1<<20), 16<<20)
 	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	entries := make([]Entry, 0, len(lines))
+	for i, line := range lines {
 		var e Entry
-		if json.Unmarshal(scanner.Bytes(), &e) != nil {
-			break // a recorder killed mid-write leaves a partial last line
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			if i == len(lines)-1 {
+				break // a recorder killed mid-write leaves a partial last line
+			}
+			return nil, fmt.Errorf("recording.jsonl line %d: %w", i+1, err)
 		}
 		entries = append(entries, e)
 	}
-	return entries, scanner.Err()
+	return entries, nil
 }
 
 // Render draws every take of the recording in dir into outdir/take-N/.

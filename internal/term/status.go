@@ -11,7 +11,7 @@ import (
 // Status is what tmux reports about the filmed pane at one moment.
 type Status struct {
 	CursorX, CursorY, Cols, Rows int
-	CursorVisible, Film          bool
+	CursorVisible, Film, Stop    bool
 	Sent                         int    // prompt sequence number when input was last sent
 	Seq, Code                    int    // the latest prompt's sequence number and reported status
 	Command                      string // the pane's foreground command
@@ -23,7 +23,7 @@ type Status struct {
 func (st Status) AtPrompt() bool { return st.Seq > st.Sent && st.Command == "bash" }
 
 const statusFormat = "#{cursor_x};#{cursor_y};#{pane_width};#{pane_height};#{cursor_flag};" +
-	"#{@movie_film};#{@movie_sent};#{pane_current_command};#{pane_title}"
+	"#{@movie_film};#{@movie_stop};#{@movie_sent};#{pane_current_command};#{pane_title}"
 
 // parseTitle reads the MOVIE;<sequence>;<status> marker the prompt sets.
 func parseTitle(title string) (seq, code int, ok bool) {
@@ -42,8 +42,8 @@ func parseTitle(title string) (seq, code int, ok bool) {
 // parseStatus reads a snapshot: one status line, then the screen.
 func parseStatus(out string) (Status, error) {
 	line, screen, _ := strings.Cut(out, "\n")
-	f := strings.SplitN(line, ";", 9)
-	if len(f) != 9 {
+	f := strings.SplitN(line, ";", 10)
+	if len(f) != 10 {
 		return Status{}, fmt.Errorf("unexpected tmux status line %q", line)
 	}
 	var n [4]int
@@ -55,9 +55,9 @@ func parseStatus(out string) (Status, error) {
 		n[i] = v
 	}
 	st := Status{CursorX: n[0], CursorY: n[1], Cols: n[2], Rows: n[3],
-		CursorVisible: f[4] == "1", Film: f[5] != "off", Command: f[7], Screen: screen}
-	st.Sent, _ = strconv.Atoi(f[6])
-	st.Seq, st.Code, _ = parseTitle(f[8])
+		CursorVisible: f[4] == "1", Film: f[5] != "off", Stop: f[6] == "1", Command: f[8], Screen: screen}
+	st.Sent, _ = strconv.Atoi(f[7])
+	st.Seq, st.Code, _ = parseTitle(f[9])
 	return st, nil
 }
 

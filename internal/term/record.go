@@ -23,7 +23,9 @@ type Entry struct {
 func now() float64 { return float64(time.Now().UnixNano()) / 1e9 }
 
 // Record snapshots the pane up to ten times a second, appending each change
-// to recording.jsonl, until the tmux server is gone.
+// to recording.jsonl, until the tmux server is gone or Stop asks it to
+// finish: it is the only writer of recording.jsonl, so Stop hands off to it
+// with @movie_stop rather than killing the server out from under it.
 func Record(dir string) error {
 	s, err := Load(dir)
 	if err != nil {
@@ -46,6 +48,14 @@ func Record(dir string) error {
 		}
 		e := Entry{T: now(), Film: st.Film, Cols: st.Cols, Rows: st.Rows,
 			CursorX: st.CursorX, CursorY: st.CursorY, Cursor: st.CursorVisible, Screen: st.Screen}
+		if st.Stop {
+			// Flush the final screen unconditionally, even if it looks like
+			// the last snapshot, and hold it for 1.5s before ending the take.
+			if err := enc.Encode(e); err != nil {
+				return err
+			}
+			return enc.Encode(Entry{T: now() + 1.5, End: true})
+		}
 		probe := e
 		probe.T = last.T
 		if first || probe != last {

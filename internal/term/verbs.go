@@ -35,8 +35,9 @@ func requireEmptyDir(dir string) error {
 }
 
 // Start creates the session, clears the screen off camera, starts the
-// recorder in the background, and returns.
-func Start(dir string, o StartOptions, stdout io.Writer) error {
+// recorder in the background, and returns. Any failure once the tmux server
+// exists kills it, so Start never leaves an orphaned server behind.
+func Start(dir string, o StartOptions, stdout io.Writer) (err error) {
 	if runtime.GOOS == "windows" {
 		return errors.New("movie term needs macOS, Linux, or WSL")
 	}
@@ -72,22 +73,26 @@ func Start(dir string, o StartOptions, stdout io.Writer) error {
 	if _, err := s.tmux(args...); err != nil {
 		return err
 	}
+	// The tmux server now exists: kill it on any failure from here on, so
+	// Start never leaks a server on error.
+	defer func() {
+		if err != nil {
+			s.tmux("kill-server")
+		}
+	}()
 	if _, err := s.waitFor(10*time.Second, func(st Status) bool { return st.Seq >= 1 }); err != nil {
-		s.tmux("kill-server")
 		return fmt.Errorf("the shell never showed a prompt: %w", err)
 	}
 	if err := s.send("clear", "Enter"); err != nil {
 		return err
 	}
 	if _, err := s.waitFor(10*time.Second, func(st Status) bool { return st.Seq >= 2 }); err != nil {
-		s.tmux("kill-server")
 		return fmt.Errorf("the shell did not clear: %w", err)
 	}
 	if err := s.save(); err != nil {
 		return err
 	}
 	if err := spawnRecorder(s); err != nil {
-		s.tmux("kill-server")
 		return err
 	}
 	recording := filepath.Join(s.Dir, "recording.jsonl")
@@ -211,11 +216,17 @@ func report(stdout io.Writer, o Outcome, screen string) {
 }
 
 // Stop ends the session, waits for the recorder to finish, and renders.
+//
+// The recorder is the only writer of recording.jsonl, so Stop does not kill
+// the tmux server first: that would race the recorder's last snapshot against
+// the server going away. Instead it asks the recorder to flush and hold the
+// final screen (@movie_stop), waits for it to confirm and exit
+// (recorder.done), and only then tears the server down.
 func Stop(s *Session, outdir string, px image.Point, stdout io.Writer) error {
 	if err := requireEmptyDir(outdir); err != nil {
 		return err
 	}
-	s.tmux("kill-server") // already gone is fine
+	s.tmux("set-option", "-t", window, "@movie_stop", "1") // best effort: a dead server means the recorder already stopped on its own
 	done := filepath.Join(s.Dir, "recorder.done")
 	deadline := time.Now().Add(5 * time.Second)
 	for {
@@ -227,6 +238,12 @@ func Stop(s *Session, outdir string, px image.Point, stdout io.Writer) error {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
+	}
+	s.tmux("kill-server") // ignore errors: already gone is fine
+	if len(s.Wrapper) == 0 {
+		if err := os.Remove(s.Socket); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
 	}
 	return Render(s.Dir, outdir, px, stdout)
 }

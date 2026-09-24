@@ -21,7 +21,7 @@ func TestParseTitle(t *testing.T) {
 }
 
 func TestParseStatusSplitsStatusLineFromScreen(t *testing.T) {
-	st, err := parseStatus("2;1;120;34;1;on;4;bash;MOVIE;5;1\n$ false\n$\n")
+	st, err := parseStatus("2;1;120;34;1;on;0;4;bash;MOVIE;5;1\n$ false\n$\n")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,6 +32,23 @@ func TestParseStatusSplitsStatusLineFromScreen(t *testing.T) {
 	}
 	if !st.AtPrompt() {
 		t.Fatal("a new prompt since the last input should be AtPrompt")
+	}
+}
+
+func TestParseStatusReadsStop(t *testing.T) {
+	st, err := parseStatus("0;0;80;24;0;on;1;0;bash;bash\n\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.Stop {
+		t.Fatalf("got %+v, want Stop true", st)
+	}
+	st, err = parseStatus("0;0;80;24;0;on;0;0;bash;bash\n\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Stop {
+		t.Fatalf("got %+v, want Stop false", st)
 	}
 }
 
