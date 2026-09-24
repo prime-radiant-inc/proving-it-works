@@ -9,6 +9,7 @@ import (
 	"github.com/prime-radiant-inc/proving-it-works/internal/build"
 	"github.com/prime-radiant-inc/proving-it-works/internal/check"
 	"github.com/prime-radiant-inc/proving-it-works/internal/exitcode"
+	"github.com/prime-radiant-inc/proving-it-works/internal/term"
 )
 
 const usage = `movie: make a movie that proves software works, and check it.
@@ -36,6 +37,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return build.Main(args[1:], stdout, stderr)
 	case "check":
 		return check.Main(args[1:], stdout, stderr)
+	case "term":
+		return term.Main(args[1:], stdout, stderr)
 	}
 	fmt.Fprintf(stderr, "movie: unknown command %q\n\n%s", args[0], usage)
 	return exitcode.Usage
