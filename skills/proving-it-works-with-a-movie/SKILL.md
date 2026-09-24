@@ -45,6 +45,11 @@ installed as a plugin, `$CLAUDE_PLUGIN_ROOT/skills/proving-it-works-with-a-movie
 "$SKILL_DIR/bin/movie" check other.mp4               # the gate alone, for a movie made elsewhere
 ```
 
+`check` expects narration and subtitles by default. For a movie made
+elsewhere that is meant to be silent, pass `--no-expect-audio`; for one
+that is meant to have no subtitles, `--no-expect-subtitles`. (`build`
+sets both expectations for you from the scene file.)
+
 On Windows PowerShell, run `& "$SKILL_DIR/bin/movie-windows-amd64.exe"` with
 the same arguments. From Git Bash, `bin/movie` works; pass paths in Windows
 form (`cygpath -m`).
@@ -88,7 +93,7 @@ frame, a transition) has to be held longer than a second. Then:
 
 - "The frames looked right" → frames are not a timeline. Run the checker.
 - "ffprobe says 27 seconds" → duration is not content.
-- "The TTS returned 200" → generation is not delivery. Transcribe it.
+- "The TTS returned 200" → generation is not delivery. Listen to it.
 - "I'll note the glitch in the handover" → regenerate it instead.
 - "Close enough to demo" → you are about to hand a reviewer a frozen movie.
 - "No API key, so no narration" → `movie build` uses a local voice.

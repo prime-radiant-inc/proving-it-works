@@ -91,10 +91,10 @@ func Evaluate(m Measurements, subs Subtitles, o Options) Report {
 		fail("duration is %.2fs - that is not a movie", m.Duration)
 	}
 	if o.ExpectAudio && !m.HasAudio {
-		fail("expected narration but there is no audio stream")
+		fail("expected narration but there is no audio stream; pass --no-expect-audio if the movie is meant to be silent")
 	}
 	if o.ExpectAudio && len(m.Levels) > 0 && len(talking) == 0 {
-		fail("the audio track is silent end to end")
+		fail("the audio track is silent end to end; pass --no-expect-audio if the movie is meant to be silent")
 	}
 
 	// a narrated movie with no subtitles fails for everyone watching it muted

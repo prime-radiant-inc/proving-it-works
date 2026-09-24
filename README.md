@@ -36,11 +36,12 @@ the timeline check here is a script, not advice.
 
 ## What's in it
 
-A skill, `proving-it-works-with-a-movie`, that covers four routes:
+A skill, `proving-it-works-with-a-movie`, that covers five routes:
 
 | Route | For |
 |---|---|
 | Browser-driven motion | The interaction is the claim: typing, clicking, live updates |
+| Desktop window | A desktop app's window, captured with ffmpeg (recording-motion.md) |
 | Terminal | A CLI, a TUI, an install, a test run, an agent working |
 | Stills | A sequence of real states, motion optional |
 | Log-rendered reel | OS capture is blocked, or the thing to prove is a *run*, not a UI |
@@ -51,8 +52,9 @@ recording against a copy of your data rather than the real thing.
 
 ### The tool
 
-One binary, `bin/movie` (prebuilt for macOS, Linux, and Windows; nothing to
-install but ffmpeg):
+One binary, `bin/movie`, prebuilt for macOS, Linux, and Windows. It needs
+ffmpeg; `movie term` also needs tmux, and the keyless local voice needs
+Piper (see Requirements):
 
 | Command | Does |
 |---|---|

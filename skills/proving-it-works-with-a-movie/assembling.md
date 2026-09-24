@@ -65,6 +65,11 @@ scene.
 - `movie-check/contact-sheet.png`, the sheet to look at.
 - `movie.build/`, scratch: segments and cached narration. Safe to delete.
 
+`build` runs the gate expecting audio and subtitles exactly when something
+is narrated. Run alone on a movie made elsewhere, `movie check` expects
+both; pass `--no-expect-audio` for a movie meant to be silent and
+`--no-expect-subtitles` for one meant to have no subtitles.
+
 ## `-nostdin` on every ffmpeg call inside a loop
 
 When you make the pieces yourself, remember ffmpeg reads stdin by default

@@ -26,6 +26,10 @@ func hasFailure(r Report, needle string) bool {
 	return slices.ContainsFunc(r.Failures, func(s string) bool { return strings.Contains(s, needle) })
 }
 
+// noExpectAudioHint ends each audio failure, so a movie that is meant to be
+// silent (made elsewhere and checked alone) says how to check it as such.
+const noExpectAudioHint = "; pass --no-expect-audio if the movie is meant to be silent"
+
 func TestSilentTrackPassesWhenAudioIsNotExpected(t *testing.T) {
 	r := Evaluate(paced(repeat(-120, 20)), Subtitles{}, Options{ExpectSubtitles: true})
 	if len(r.Failures) != 0 {
@@ -42,14 +46,14 @@ func TestAbsentAudioPassesWhenAudioIsNotExpected(t *testing.T) {
 
 func TestSilentTrackFailsWhenAudioIsExpected(t *testing.T) {
 	r := Evaluate(paced(repeat(-120, 20)), Subtitles{}, Options{ExpectAudio: true, ExpectSubtitles: true})
-	if !hasFailure(r, "silent") {
+	if !hasFailure(r, "the audio track is silent end to end"+noExpectAudioHint) {
 		t.Fatal(r.Failures)
 	}
 }
 
 func TestMissingAudioStreamFailsWhenAudioIsExpected(t *testing.T) {
 	m := Measurements{Duration: 20, Changes: repeat(0.1, 19)}
-	if r := Evaluate(m, Subtitles{}, Options{ExpectAudio: true}); !hasFailure(r, "no audio stream") {
+	if r := Evaluate(m, Subtitles{}, Options{ExpectAudio: true}); !hasFailure(r, "no audio stream"+noExpectAudioHint) {
 		t.Fatal(r.Failures)
 	}
 }
