@@ -245,6 +245,27 @@ func TestFilmOffRightAfterRunKeepsTheResultAndHoldsIt(t *testing.T) {
 	}
 }
 
+// A film on followed by film off before the recorder's next poll must still
+// be acknowledged: the recorder never saw filming on, but film off waits for
+// it. Separate movie processes are too slow to land inside one poll, so this
+// calls SetFilm directly.
+func TestFilmOffRightAfterFilmOnIsStillConfirmed(t *testing.T) {
+	dir := t.TempDir()
+	session := startSession(t, dir)
+	s, err := term.Load(session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		if err := term.SetFilm(s, false); err != nil {
+			t.Fatalf("film off %d: %v", i, err)
+		}
+		if err := term.SetFilm(s, true); err != nil {
+			t.Fatalf("film on %d: %v", i, err)
+		}
+	}
+}
+
 // TestARecordingThatEndsWithoutStopSaysWhy: when the tmux server goes away
 // under the recorder, it logs each failed poll, gives up after five, records
 // why in the end entry, and render warns about it.

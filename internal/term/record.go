@@ -76,10 +76,13 @@ func Record(dir string, log io.Writer) error {
 			}
 			return enc.Encode(Entry{T: now() + hold, End: true})
 		}
-		if !st.Film && !first && last.Film {
+		if !st.Film && !first && (last.Film || st.FilmOffPending) {
 			// Filming just stopped. Film the screen as it is now, which a
 			// caller's last command already put there, hold it, and confirm
-			// to SetFilm so the caller's next action cannot race this.
+			// to SetFilm so the caller's next action cannot race this. A
+			// pending film off counts even when this recorder never saw
+			// filming on (on and off inside one poll), or SetFilm would wait
+			// for a confirmation that never comes.
 			filmed := e
 			filmed.Film = true
 			if err := enc.Encode(filmed); err != nil {
