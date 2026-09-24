@@ -128,3 +128,78 @@ func TestBuildRejectsAnInvalidSceneFileBeforeEncoding(t *testing.T) {
 		t.Fatal("scratch was created for an invalid scene file")
 	}
 }
+
+// requirePiper skips unless the keyless voice is installed.
+func requirePiper(t *testing.T) {
+	t.Helper()
+	testmedia.Require(t, "ffmpeg", "ffprobe", "piper")
+	dir := os.Getenv("PIPER_VOICE_DIR")
+	if dir == "" {
+		home, _ := os.UserHomeDir()
+		dir = filepath.Join(home, ".cache", "piper-voices")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "en_US-lessac-medium.onnx")); err != nil {
+		t.Skipf("needs the piper voice en_US-lessac-medium in %s", dir)
+	}
+}
+
+func TestNarratedCardLastsAsLongAsItsClipAndReusesIt(t *testing.T) {
+	requirePiper(t)
+	dir := t.TempDir()
+	writeFile(t, dir, "demo.yaml", `size: 320x180
+fps: 10
+engine: piper
+scenes:
+  - id: title
+    card: proving it works
+    duration: 1
+    narration: This card is narrated by a local voice, and it lasts as long as the words do.
+  - id: end
+    card: the end
+    duration: 1
+`)
+	r := runMovie(t, dir, "build", "demo.yaml", "demo.mp4")
+	if !strings.Contains(r.stdout, "rendered") {
+		t.Fatalf("no clip rendered:\n%s%s", r.stdout, r.stderr)
+	}
+	clips, _ := filepath.Glob(filepath.Join(dir, "demo.build", "narration", "*.wav"))
+	if len(clips) != 1 {
+		t.Fatalf("clips: %v", clips)
+	}
+	speech := testmedia.Duration(t, clips[0])
+	segment := testmedia.Duration(t, filepath.Join(dir, "demo.build", "title.mp4"))
+	if speech < 2 || segment < speech-0.05 {
+		t.Fatalf("clip %.2fs, segment %.2fs", speech, segment)
+	}
+	again := runMovie(t, dir, "build", "demo.yaml", "demo2.mp4")
+	if !strings.Contains(again.stdout, "cached") {
+		t.Fatalf("second build did not reuse the clip:\n%s", again.stdout)
+	}
+}
+
+func TestMissingPiperVoiceIsAnEnvironmentErrorNamingTheFix(t *testing.T) {
+	testmedia.Require(t, "ffmpeg", "ffprobe", "piper")
+	dir := t.TempDir()
+	t.Setenv("PIPER_VOICE_DIR", t.TempDir())
+	writeFile(t, dir, "demo.yaml", "engine: piper\nscenes:\n  - id: a\n    card: x\n    narration: hello\n")
+	r := runMovie(t, dir, "build", "demo.yaml", "demo.mp4")
+	if r.code != 2 || !strings.Contains(r.stderr, "piper.download_voices") {
+		t.Fatalf("code %d\n%s", r.code, r.stderr)
+	}
+}
+
+func TestOpenAIVoiceNarrates(t *testing.T) {
+	if os.Getenv("OPENAI_API_KEY") == "" {
+		t.Skip("needs OPENAI_API_KEY")
+	}
+	testmedia.Require(t, "ffmpeg", "ffprobe")
+	for _, engine := range []string{"openai", "openai-chat"} {
+		dir := t.TempDir()
+		writeFile(t, dir, "demo.yaml", "size: 320x180\nfps: 10\nengine: "+engine+
+			"\nscenes:\n  - id: a\n    card: x\n    narration: Proving it works, out loud.\n")
+		r := runMovie(t, dir, "build", "demo.yaml", "demo.mp4")
+		if !strings.Contains(r.stdout, "rendered") {
+			t.Errorf("%s:\n%s%s", engine, r.stdout, r.stderr)
+		}
+	}
+}

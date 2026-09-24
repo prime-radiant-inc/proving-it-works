@@ -23,6 +23,15 @@ jobs:
       - name: Install ffmpeg (Windows)
         if: runner.os == 'Windows'
         run: choco install ffmpeg -y
+      - name: Install Piper and its default voice (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          export PATH="$HOME/.local/bin:$PATH"
+          uv tool install piper-tts
+          uvx --from piper-tts python -m piper.download_voices --data-dir "$HOME/.cache/piper-voices" en_US-lessac-medium
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          piper --help > /dev/null
       - name: Test
         shell: bash
         run: go test ./...
