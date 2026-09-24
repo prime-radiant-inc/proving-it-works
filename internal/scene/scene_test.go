@@ -108,3 +108,11 @@ scenes:
 		}
 	}
 }
+
+func TestCardTextTheFontCannotDrawIsRejected(t *testing.T) {
+	_, err := Load(fixture(t, "scenes:\n  - id: t\n    card: 漢字 works\n"))
+	var p Problems
+	if !errors.As(err, &p) || !strings.Contains(strings.Join(p, "\n"), "漢 (U+6F22)") {
+		t.Fatalf("got %v", err)
+	}
+}

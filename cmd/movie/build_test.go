@@ -88,6 +88,10 @@ func TestBuildHandlesEverySceneKindAtAwkwardPaths(t *testing.T) {
 	writeFile(t, dir, "demo.yaml", `size: 320x180
 fps: 10
 scenes:
+  - id: title
+    card: proving-it-works
+    subtitle: every kind of scene
+    duration: 1
   - id: shot
     image: "media/shot %03d.png"
     duration: 1
@@ -103,9 +107,9 @@ scenes:
 	if r.code != 0 {
 		t.Fatalf("code %d\n%s%s", r.code, r.stdout, r.stderr)
 	}
-	// 1 + 5/2.5 + 2 + 1.5
-	assertNear(t, "movie duration", testmedia.Duration(t, filepath.Join(dir, "out", "final cut.mp4")), 6.5, 0.3)
-	for _, line := range []string{"shot: 1.0s", "run: 2.0s", "loud: 2.0s", "quiet: 1.5s"} {
+	// 1 + 1 + 5/2.5 + 2 + 1.5
+	assertNear(t, "movie duration", testmedia.Duration(t, filepath.Join(dir, "out", "final cut.mp4")), 7.5, 0.3)
+	for _, line := range []string{"title: 1.0s", "shot: 1.0s", "run: 2.0s", "loud: 2.0s", "quiet: 1.5s"} {
 		if !strings.Contains(r.stdout, line) {
 			t.Errorf("missing %q in\n%s", line, r.stdout)
 		}

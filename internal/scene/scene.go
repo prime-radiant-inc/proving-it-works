@@ -10,9 +10,11 @@ import (
 	"slices"
 	"strings"
 
+	"golang.org/x/image/font/opentype"
 	"gopkg.in/yaml.v3"
 
 	"github.com/prime-radiant-inc/proving-it-works/internal/cli"
+	"github.com/prime-radiant-inc/proving-it-works/internal/fonts"
 )
 
 // Kind is what a scene shows.
@@ -220,6 +222,9 @@ func parseScene(f *File, index int, item any) (Scene, Problems) {
 	case Card:
 		sc.Title, _ = text("card")
 		sc.Subtitle, _ = text("subtitle")
+		if missing := fonts.Missing([]*opentype.Font{fonts.Sans()}, sc.Title+" "+sc.Subtitle); len(missing) > 0 {
+			p = append(p, fmt.Sprintf("%s: the card font cannot draw %s", name, fonts.Describe(missing)))
+		}
 		sc.Duration = positive("duration", 3)
 	case Image:
 		if sc.Source = source("image"); sc.Source != "" && !isFile(sc.Source) {

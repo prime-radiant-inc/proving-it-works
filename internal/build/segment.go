@@ -1,6 +1,7 @@
 package build
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -126,8 +127,11 @@ func segment(scratch string, f *scene.File, sc scene.Scene, wav string, speech f
 		if cerr := pngs.Close(); cerr != nil {
 			err = cerr
 		}
-	default:
-		err = fmt.Errorf("%s scenes arrive in the next task", sc.Kind)
+	case scene.Card:
+		var png []byte
+		if png, err = Card(sc.Title, sc.Subtitle, f.Width, f.Height); err == nil {
+			err = encodeStill(scratch, name, f, bytes.NewReader(png), float64(f.FPS), 1, max(speech, sc.Duration), wav)
+		}
 	}
 	if err != nil {
 		return 0, fmt.Errorf("scene %s: %w", sc.ID, err)
@@ -150,7 +154,7 @@ func encodeMovie(scratch, name string, f *scene.File, src string) error {
 	args := []string{"-i", src}
 	audio := "0:a:0"
 	if !info.Has("audio") {
-		args = append(args, "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo")
+		args = append(args, audioInput("")...)
 		audio = "1:a:0"
 	}
 	args = append(args, "-vf", fit(f.Width, f.Height), "-af", "apad", "-r", strconv.Itoa(f.FPS),
