@@ -48,25 +48,48 @@ func encodeStill(scratch, name string, f *scene.File, pngs io.Reader, rate float
 	return ffmpeg.Run(scratch, pngs, args...)
 }
 
+// fileStream records a copying goroutine's error and provides Read and Close.
+type fileStream struct {
+	*io.PipeReader
+	done chan error
+}
+
 // streamFiles concatenates files onto one reader, opening one at a time.
 // Close it after use so the copying goroutine ends even if ffmpeg quit early.
-func streamFiles(paths []string) io.ReadCloser {
+func streamFiles(paths []string) *fileStream {
 	r, w := io.Pipe()
+	done := make(chan error, 1)
 	go func() {
 		for _, p := range paths {
 			file, err := os.Open(p)
 			if err != nil {
-				w.CloseWithError(err)
+				done <- fmt.Errorf("reading %s: %w", p, err)
+				w.Close()
 				return
 			}
 			_, err = io.Copy(w, file)
 			file.Close()
 			if err != nil {
-				w.CloseWithError(err)
+				done <- fmt.Errorf("reading %s: %w", p, err)
+				w.Close()
 				return
 			}
 		}
+		done <- nil
 		w.Close()
 	}()
-	return r
+	return &fileStream{r, done}
+}
+
+// Close closes the pipe reader, waits for the copying goroutine, and returns
+// any file error (ignoring io.ErrClosedPipe, which means ffmpeg quit early).
+func (fs *fileStream) Close() error {
+	fs.PipeReader.Close()
+	err := <-fs.done
+	// If the error is io.ErrClosedPipe, the pipe was closed (expected when ffmpeg
+	// quits early). Only report real file errors.
+	if err == io.ErrClosedPipe {
+		return nil
+	}
+	return err
 }

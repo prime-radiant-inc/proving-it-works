@@ -34,7 +34,9 @@ func Run(scenePath, out string, stdout io.Writer) (int, error) {
 		name := sc.ID + ".mp4"
 		pngs := streamFiles([]string{sc.Source})
 		err := encodeStill(scratch, name, f, pngs, float64(f.FPS), 1, sc.Duration, "")
-		pngs.Close()
+		if cerr := pngs.Close(); cerr != nil {
+			err = cerr
+		}
 		if err != nil {
 			return 0, fmt.Errorf("scene %s: %w", sc.ID, err)
 		}
