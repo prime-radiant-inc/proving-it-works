@@ -3,118 +3,59 @@
 Narration is where the most embarrassing silent failures live: the movie
 looks perfect and says the wrong words.
 
-## Choosing a voice
+## Engines
 
-Listen to a sample of your actual sentences — including product names and
-jargon — before you render anything with it. A voice that mangles the one
-word your movie is about is worse than no narration.
+`movie build` narrates every scene that has `narration`, with the scene
+file's `engine`:
 
-| Engine | Watch for |
-|---|---|
-| OS built-ins (`say`) | Free and instant; reliably sounds robotic. Fine for a scratch timing pass, not for delivery. |
-| Cloud TTS endpoints (e.g. `/v1/audio/speech`) | Deterministic: reads exactly what you send. The safe default. |
-| Chat models with audio output | Best prosody, but they are *chat models*: they ad-lib preambles ("Sure, here it is:"). Usable only with a verbatim gate. |
-| Local neural TTS, Piper | The default when no key is present: free, offline after a one-time voice download, runs on macOS and Linux. It **mispronounces** unusual names rather than dropping them (our jargon came back as "Smevel's", all 14 words intact) — the opposite of the failure below, and the safer one. |
-| Local neural TTS, Kokoro | Free and offline, but drops out-of-vocabulary words **silently**, with a zero exit code. "Every eval on the shelf" became "every on the shelf" with no error at all. |
+| Engine | What it is | Watch for |
+|---|---|---|
+| `auto` (default) | `openai` when `OPENAI_API_KEY` (or `llm keys get openai`) yields a key, else `piper` | |
+| `openai` | OpenAI's speech endpoint | Reads exactly what it is sent. The safe default. |
+| `openai-chat` | A chat model with audio output | Best prosody, but it ad-libs ("Sure, here it is:"). Gated: its own transcript must match the script word for word, or the clip is rejected and retried once. That proves what the model says it said, not what is in the audio. |
+| `piper` | A local neural voice, free and offline | **Mispronounces** unusual names rather than dropping them. |
 
-## Use the script
+Local TTS engines other than these can drop out-of-vocabulary words
+silently with a zero exit code ("every eval on the shelf" became "every on
+the shelf"). That is why `build` offers only these three.
 
-`scripts/narrate scenes.yaml narration/ --verify on` renders one clip per scene and
-picks its engine automatically: a cloud voice when a key is there, Piper
-when there isn't. It writes `manifest.json` with the exact text and the
-*measured* duration of every clip — which is what make-subtitles and the
-assembly step both consume, so nothing downstream has to guess timings.
+## The local voice
 
-Force the choice with `--engine openai|openai-chat|piper`. `openai-chat`
-buys the best prosody and pays for it with ad-libs, so it is gated below.
-
-## The gate runs even without a key
-
-`narrate --verify on` transcribes every clip, including cached clips, with
-local faster-whisper in its own environment and compares the result against
-the script. It needs no API key. Missing or failed transcription is a failure;
-the first run needs network access to download dependencies and the ASR model.
-
-| Mode | Local transcription behavior |
-|---|---|
-| `--verify on` | Required for every engine. Unavailable ASR or detected drift returns nonzero and excludes the failed clip from the manifest. Use this for the gated workflow above. |
-| `--verify auto` (CLI default) | Tries ASR for Piper and `openai-chat`; reports unavailable ASR but allows the clip. Skips ASR for `openai`. Detected drift still fails. |
-| `--verify off` | Skips ASR. |
-
-For `openai-chat`, word-comparison support is mandatory in every ASR mode,
-including cache reuse. During synthesis its returned transcript must contain
-speech and pass that comparison; an unsupported script also withdraws cached
-acceptance before reuse. `--verify off` bypasses only local ASR. The returned
-transcript still does not prove what the WAV contains.
-
-What it measures is **missing or invented content**, not exact words, and
-that distinction is load-bearing. A small ASR mangles unusual names — ours
-came back as "Mevil studio" and "Yvel" — so exact matching cries wolf on
-good clips. Worse, a genuinely *dropped* word scores as more similar than
-two mispronounced ones, so a strict ratio would pass the real defect and
-fail the harmless one. The gate therefore flags a large length change or a
-run of consecutive words that went missing: a skipped sentence, an ad-libbed
-preamble, a clip that came out empty.
-
-It will not catch a single dropped word in a jargon-heavy line. For those,
-listen to one clip yourself when you pick the voice.
-
-`narrate` records each clip's text, engine, voice, and synthesis model.
-Changing any of these re-renders the clip. Clips without recorded synthesis
-settings also re-render; an unchanged clip can be reused and still receives
-any requested ASR verification.
-
-A newly synthesized clip gets at most two attempts when synthesis or a
-supported transcript/ASR comparison fails. A cached clip is checked once; if
-rejected, its manifest acceptance is withdrawn and a later invocation can
-synthesize a replacement. Failed candidate files remain as evidence rather
-than being deleted to make a retry appear clean.
-
-## The verbatim gate — required
-
-Never trust the generator's own account of what it produced. Verify the
-audio that is actually in the file:
+Install Piper once, and its default voice once:
 
 ```bash
-# transcribe the RENDERED audio, then diff against the source script
-ffmpeg -nostdin -v error -i movie.mp4 -map 0:a -ac 1 -ar 16000 narration.wav
-# send narration.wav to a transcription API, then compare word sequences
+uv tool install piper-tts
+uvx --from piper-tts python -m piper.download_voices --data-dir ~/.cache/piper-voices en_US-lessac-medium
 ```
 
-A word-sequence diff (lowercase, strip punctuation) catches dropped jargon,
-ad-libbed preambles, and whole missing sentences. If the engine returns its
-own transcript, diff that too — it is a cheap early signal — but the
-rendered audio is the artifact that ships, so it is the one that counts.
+`build` looks for voices in `PIPER_VOICE_DIR`, default
+`~/.cache/piper-voices`, and names the exact command if something is
+missing. It never downloads anything itself.
 
-When drift is found: regenerate that block and re-verify. Retrying once
-clears chat-model preambles almost every time.
+## Listen to it
 
-## Measure durations; never guess them
+Nothing in `build` hears the audio. Before you commit to a voice, listen to
+a clip of your actual sentences, including product names and jargon. A voice
+that mangles the one word your movie is about is worse than no narration.
+After the build, play the movie with sound on.
 
-The single most common defect in a narrated movie is motion paced against
-narration that nobody timed. Write the script, render the audio, `ffprobe`
-each clip, *then* build video to those measured lengths.
+## Clips are cached
 
-```bash
-ffprobe -v error -show_entries format=duration -of csv=p=0 narration/scene-03.wav
-```
+`build` keeps each accepted clip in `movie.build/narration/`, named by its
+text, engine, voice, and model, and reuses it while all four are unchanged.
+It prints each clip's path. To redo a clip that sounds wrong, delete that
+file and build again.
 
-Word-count estimates (~2.5 words/sec) are for planning the script only.
-Real delivery runs long and varies per block.
+## Measured, never guessed
+
+`build` measures every clip and holds each scene for max(narration,
+visuals), so nothing is paced against a guess. When you record motion to
+match narration, build once, read each scene's length from the build
+output, and pace the recording to it. Word-count estimates (~2.5 words/sec)
+are for planning the script only.
 
 ## Pronunciation of product names
 
-Check the sample for your own jargon before committing to a voice. If a good
-voice mangles one term, spell it phonetically **in the TTS input only**
-("S M evals"), never in the script file a human reads. Keep that
-substitution in the narrate step so the source text stays clean.
-
-## Native Windows local voice
-
-Use `--engine piper --verify on` with the commands in assembling.md. The
-first run downloads the Piper voice and the transcription model; later runs
-reuse those caches. `--verify on` transcribes every clip, including cached
-WAVs from an earlier run, and treats an unavailable transcriber as a failure
-rather than a pass. Afterwards, transcribe the finished movie's audio and
-compare each narrated interval with its script. A `kind: movie` segment
-keeps its own sound and is checked against its source, not a script.
+If a voice mangles one term, try another voice first. Respelling the term
+phonetically in `narration` works, but the subtitles will show the
+respelling too.

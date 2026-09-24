@@ -12,12 +12,8 @@ from pathlib import Path
 
 
 IMPLEMENTED_SUITES = {
-    "assembly": "test_assembly.py",
     "browser": "test_browser.py",
     "contracts": "test_*contract*.py",
-    "narration": "test_narration.py",
-    "paths": "test_paths.py",
-    "subtitles": "test_subtitles.py",
     "terminal": "test_terminal.py",
 }
 def parse_args() -> argparse.Namespace:

@@ -3,18 +3,17 @@
 Run a suite from the repository root:
 
 ```sh
-uv run --script tests/proving-it-works-with-a-movie/run-tests.py --suite assembly
+uv run --script tests/proving-it-works-with-a-movie/run-tests.py --suite browser
 uv run --script tests/proving-it-works-with-a-movie/run-tests.py --suite contracts
-uv run --script tests/proving-it-works-with-a-movie/run-tests.py --suite narration
+uv run --script tests/proving-it-works-with-a-movie/run-tests.py --suite terminal
 uv run --script tests/proving-it-works-with-a-movie/run-tests.py --suite all
 ```
+
+The movie pipeline itself is tested in Go: `go test ./...`.
 
 By default, unavailable external capabilities are reported as skips. Add
 `--require-capabilities` when the selected environment is required to provide
 them; any skip then makes the run fail.
-
-The assembly sine wave is only a synthetic timing fixture. The narration drift
-inputs exercise text comparison only. Neither is speech/ASR acceptance.
 
 The `contracts` suite is the safe entrypoint for mocked process/media boundaries
 and text fixtures. It does not run the existing media/session suites, inspect a

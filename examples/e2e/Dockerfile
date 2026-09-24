@@ -16,7 +16,7 @@ RUN arch="$(dpkg --print-architecture)" \
        "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.${t}" \
     && chmod +x /usr/local/bin/ttyd && ttyd --version
 
-# uv: check-movie runs via `uv run --script` (PEP 723 inline deps)
+# uv: installs the piper CLI for the keyless voice
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:${PATH}"
 
@@ -41,9 +41,8 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 WORKDIR /work
 
 # Pre-warm the local voice so the demo doesn't spend its first minute on a
-# 60MB download. narrate finds it here via PIPER_VOICE_DIR.
+# 60MB download. movie build finds it here via PIPER_VOICE_DIR.
 ENV PIPER_VOICE_DIR=/home/demo/.cache/piper-voices
-RUN uv run --quiet --with piper-tts python3 -c "\
-from piper.download_voices import download_voice; import pathlib, os; \
-d=pathlib.Path(os.environ['PIPER_VOICE_DIR']); d.mkdir(parents=True, exist_ok=True); \
-download_voice('en_US-lessac-medium', d); print('voice cached')"
+RUN uv tool install piper-tts \
+    && uvx --from piper-tts python -m piper.download_voices \
+         --data-dir "$PIPER_VOICE_DIR" en_US-lessac-medium

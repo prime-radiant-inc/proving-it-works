@@ -31,45 +31,40 @@ live.
 (no credentials, no data, a 40-minute job), cut it and say why. A movie
 that quietly fakes one beat is worthless as evidence for any beat.
 
-## The gate — every route, before you hand anything over
+## Build it, and gate it
 
-On native Windows, use the complete PowerShell or Git Bash sequence in
-assembling.md and the native example in recording-a-terminal.md. Invoke all
-five tools with `uv run --script`; Windows does not execute their Unix shebangs.
-
-The Unix sequence:
+Every route ends in the same two commands. `$SKILL_DIR` is this skill's own
+directory (the "Base directory for this skill" printed when it loads;
+installed as a plugin, `$CLAUDE_PLUGIN_ROOT/skills/proving-it-works-with-a-movie`).
 
 ```bash
-set -euo pipefail
-# $SKILL_DIR is this skill's own directory - the "Base directory for this
-# skill" path printed when it loads. Installed as a plugin that is
-# $CLAUDE_PLUGIN_ROOT/skills/proving-it-works-with-a-movie
-"$SKILL_DIR/scripts/narrate"        scenes.yaml narration/ --verify on
-"$SKILL_DIR/scripts/assemble"       scenes.yaml silent-cut.mp4
-"$SKILL_DIR/scripts/make-subtitles" narration/manifest.json movie.srt \
-                                    --offsets-json segments/offsets.json
-"$SKILL_DIR/scripts/burn-subtitles" silent-cut.mp4 movie.srt movie.mp4
-"$SKILL_DIR/bin/movie" check      movie.mp4      # nonzero exit: do not ship
+"$SKILL_DIR/bin/movie" build scenes.yaml movie.mp4   # narrate, assemble, subtitle, burn, check
+"$SKILL_DIR/bin/movie" check other.mp4               # the gate alone, for a movie made elsewhere
 ```
 
-For each current narrated non-movie scene, downstream tools accept only a
-manifest entry whose text matches after collapsing whitespace while preserving
-case and punctuation, and whose WAV path is relative to the narration directory.
-`kind: movie` scenes retain their source audio and receive no narration offset,
-even if the scene contains a `narration` field.
+On Windows PowerShell, run `& "$SKILL_DIR/bin/movie-windows-amd64.exe"` with
+the same arguments. From Git Bash, `bin/movie` works; pass paths in Windows
+form (`cygpath -m`).
 
-It samples picture and sound on one timeline and fails the movie when the
-action is crammed into the first seconds while narration keeps talking, when
-the picture never changes, when the audio is silent, or when a narrated
-movie has no subtitles (or subtitles that quit before the narration does). It samples the
-picture at 1 Hz, so any beat that must register — a flash, a blank frame, a
-transition — has to be held longer than a second. Then:
+`build` reads a scene file (assembling.md), narrates each narrated scene with
+a cloud voice when `OPENAI_API_KEY` exists and a local voice when it does
+not (narrating.md), holds every scene for max(narration, visuals), writes
+`movie.srt`, burns it into the picture, and runs the gate. A nonzero exit
+means do not ship.
 
-1. **Open the contact sheet it wrote and actually look at it.** Identical
-   tiles mean a frozen movie. Unreadable text means your viewport is wrong.
-2. **If narrated: transcribe the rendered audio and diff it against your
-   script.** Not the TTS engine's claim about what it said — the audio in
-   the finished file. See narrating.md.
+The gate samples picture and sound on one timeline and fails the movie when
+the action is crammed into the first seconds while narration keeps talking,
+when the picture never changes, when the audio is silent, or when a narrated
+movie has no subtitles or subtitles that quit before the narration does. It
+samples once a second, so any beat that must register (a flash, a blank
+frame, a transition) has to be held longer than a second. Then:
+
+1. **Open the contact sheet it wrote (`movie-check/contact-sheet.png`) and
+   actually look at it.** Identical tiles mean a frozen movie. Unreadable
+   text means your viewport is wrong.
+2. **If narrated: listen to it.** No tool here can hear a mispronounced name
+   or a skipped sentence. For `openai-chat`, the model's own transcript is
+   gated, which proves what it says it said, not what is in the audio.
 3. Fix, regenerate, re-run. Never patch the report instead of the movie.
 
 ## The silent failures
@@ -84,7 +79,7 @@ transition — has to be held longer than a second. Then:
 | A scene missing, error naming a truncated file | `ffmpeg` ate the loop's stdin (`-nostdin`) |
 | Your real data mutated | You recorded against the live tree; the movie writes |
 | Nothing visibly happens, because nothing visibly *should* | The claim is "state survived" — film the event, not the effect (recording-motion.md) |
-| A muted viewer gets nothing | Narration without subtitles. `narrate` + `make-subtitles` produce them; burn them in |
+| A muted viewer gets nothing | Narration without subtitles. `movie build` writes and burns them |
 
 ## Red flags — stop
 
@@ -93,7 +88,7 @@ transition — has to be held longer than a second. Then:
 - "The TTS returned 200" → generation is not delivery. Transcribe it.
 - "I'll note the glitch in the handover" → regenerate it instead.
 - "Close enough to demo" → you are about to hand a reviewer a frozen movie.
-- "No API key, so no narration" → `narrate` falls back to a local voice.
+- "No API key, so no narration" → `movie build` uses a local voice.
 - "I'll add subtitles later" → later is after someone watched it muted.
 
 ## Keep the pipeline

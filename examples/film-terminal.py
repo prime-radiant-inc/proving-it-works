@@ -192,7 +192,7 @@ async def beats_verify(c):
     tmux(c, "SKILL=$(dirname $(find ~/.claude/plugins -path "
             "'*proving-it-works-with-a-movie*' -name SKILL.md | head -1))")
     await asyncio.sleep(2.5)
-    tmux(c, "$SKILL/scripts/check-movie out/counter.mp4 --no-expect-audio")
+    tmux(c, "$SKILL/bin/movie check out/counter.mp4 --no-expect-audio")
     await asyncio.sleep(26)
 
 

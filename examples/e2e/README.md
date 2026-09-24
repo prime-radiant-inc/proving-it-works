@@ -16,7 +16,7 @@ runs unattended.
 |---|---|
 | `Dockerfile` | Debian + Node + Claude Code + ffmpeg + chromium + tmux/ttyd + mpv, and a pre-cached Piper voice so the container can narrate with no API key |
 | `app/index.html` | the subject: a counter that increments on click |
-| `scenes.yaml` | the demo's own scene script, assembled with `scripts/assemble` |
+| `scenes.yaml` | the demo's own scene script, assembled with `movie build` |
 | `../film-terminal.py` | drives the container's tmux session and screenshots it (see `recording-a-terminal.md`) |
 
 ## Running it
@@ -35,16 +35,10 @@ docker run -d --name provdemo -e CLAUDE_CODE_OAUTH_TOKEN \
 ./../film-terminal.py verify  http://127.0.0.1:7100/ provdemo
 ```
 
-Then narrate, assemble, subtitle, and gate it with the skill's own scripts:
+Then narrate, assemble, subtitle, and gate it with the skill's own tool:
 
 ```bash
-SKILL=../../skills/proving-it-works-with-a-movie/scripts
-$SKILL/narrate        scenes.yaml narration/
-$SKILL/assemble       scenes.yaml silent-cut.mp4
-$SKILL/make-subtitles narration/manifest.json demo.srt \
-                      --offsets-json segments/offsets.json
-$SKILL/burn-subtitles silent-cut.mp4 demo.srt demo.mp4
-$SKILL/check-movie    demo.mp4
+../../skills/proving-it-works-with-a-movie/bin/movie build scenes.yaml demo.mp4
 ```
 
 ## What it cost to get right
@@ -56,8 +50,8 @@ Every one of these was a silent failure — no error, just a wrong movie:
 - Keystrokes sent while the agent was still running went into *its* stdin
   and were echoed as text, producing a take of commands that never ran.
 - The agent's first movie crammed every visible change into three seconds
-  and then froze while the narration kept going — caught by `check-movie`,
+  and then froze while the narration kept going — caught by `movie check`,
   which is the reason it exists.
 - Homebrew's ffmpeg has no libass, so subtitles could not be burned on the
-  host at all; the container's Debian ffmpeg can. `burn-subtitles` detects
+  host at all; the container's Debian ffmpeg can. `movie build` detects
   this rather than silently producing a movie with no visible subtitles.

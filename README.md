@@ -49,15 +49,16 @@ A skill, `proving-it-works-with-a-movie`, that covers four routes:
 gates, measured (never guessed) pacing, cursor visibility, ffmpeg traps, and
 recording against a copy of your data rather than the real thing.
 
-### The scripts
+### The tool
 
-| Script | Does |
+One binary, `bin/movie` (prebuilt for macOS, Linux, and Windows; nothing to
+install but ffmpeg):
+
+| Command | Does |
 |---|---|
-| `narrate` | one clip per scene; a cloud voice when a key exists, a local one when it doesn't |
-| `make-subtitles` | an SRT timed to the measured clips (subtitles are the default, not a nicety) |
-| `assemble` | scenes into a cut, each segment held to max(narration, visuals) |
-| `burn-subtitles` | into the picture where libass exists, a soft track where it doesn't |
-| `movie check` | the gate (a Go binary in `bin/`; the other scripts are being ported) |
+| `movie build scenes.yaml movie.mp4` | narrates (a cloud voice with a key, a local one without), assembles each scene to max(narration, visuals), writes and burns subtitles, and runs the gate |
+| `movie check movie.mp4` | the gate, alone |
+| `movie term ...` | films a terminal session into frames |
 
 ### `movie check`
 
@@ -117,24 +118,19 @@ It runs on every harness below; each one reads the same skill from `skills/`.
 ## Requirements
 
 - `ffmpeg` and `ffprobe`
-- `uv` (runs the remaining Python scripts; each declares its own dependencies inline)
+- For the keyless voice: Piper (`uv tool install piper-tts`), see the skill's `narrating.md`
 - For the browser routes: Chrome plus a driver (Playwright or raw CDP)
-- For narration: any TTS you like — see the skill's `narrating.md` for which
-  kinds lie to you and how to catch them
+- tmux, for filming terminals
 
 ## Tests
 
 ```
 go test ./...
-uv run --script tests/proving-it-works-with-a-movie/run-tests.py --suite all
 ```
 
 Synthesizes movies with known defects via ffmpeg's lavfi sources and asserts
-each tool's verdict on them, plus contract tests for narration acceptance,
-subtitle timing, and the terminal recorder's lifecycle. No fixtures
-committed, nothing downloaded except on first run (Python deps, the ASR
-model). See `tests/proving-it-works-with-a-movie/README.md` for individual
-suites.
+each verdict, builds real movies at awkward paths, and drives real tmux
+sessions.
 
 ## Credits
 
