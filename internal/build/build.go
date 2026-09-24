@@ -31,6 +31,9 @@ func Run(scenePath, out string, stdout io.Writer) (int, error) {
 	}
 	var names []string
 	for _, sc := range f.Scenes {
+		if sc.Kind != scene.Image {
+			return 0, fmt.Errorf("scene %s: %s scenes arrive in the next task", sc.ID, sc.Kind)
+		}
 		name := sc.ID + ".mp4"
 		pngs := streamFiles([]string{sc.Source})
 		err := encodeStill(scratch, name, f, pngs, float64(f.FPS), 1, sc.Duration, "")
