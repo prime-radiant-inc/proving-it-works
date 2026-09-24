@@ -7,21 +7,27 @@ Spec: `2026-09-22-movie-native-rewrite-design.md`, section `term`
 ## Verdict
 
 No assumption in the spec's `term` section failed badly enough to change the
-design. Four things need a decision in Tasks 16-18, all additions rather than
-redesigns:
+design. The spike raised four points for Tasks 16-18, all additions rather
+than redesigns. The controller has ruled on each:
 
-1. The session command must set a UTF-8 locale. With the default (C) locale,
-   multibyte text typed with `send-keys -H` is corrupted on both macOS and
-   Linux, and readline can even insert text from history.
-2. The renderer must skip OSC 8 hyperlinks and zero-width combining marks, and
-   should draw SGR 2 (dim). Task 17's `ParseLine` as written draws OSC 8
-   sequences as visible text and gives combining marks their own cell.
-3. One fallback font, JuliaMono Regular, covers every character DejaVu Sans
-   Mono lacks. It is 3.2 MB.
-4. The shell inherits the invoking agent's `CLAUDECODE` and `CLAUDE_CODE_*`
-   variables, including `CLAUDE_CODE_MESSAGING_TOKEN`. A nested Claude Code
-   showed a warning about them on camera. The spec's list of scrubbed
-   variables doesn't cover them.
+1. **Locale (Task 16).** With the default (C) locale, multibyte text typed
+   with `send-keys -H` is corrupted on both macOS and Linux, and readline can
+   even insert text from history. Ruling: the session command sets
+   `LANG=C.UTF-8`.
+2. **Renderer (Task 17).** Task 17's `ParseLine` as written draws OSC 8
+   hyperlinks as visible text, gives combining marks their own cell, and
+   ignores SGR 2 (dim). Ruling: Task 17 skips OSC sequences, keeps zero-width
+   runes out of their own cells, and draws dim.
+3. **Fallback fonts (Task 17).** Ruling: the chain is DejaVu Sans Mono, then
+   Noto Sans Symbols 2, then Noto Sans Symbols, which together add 817 KB.
+   JuliaMono alone would also cover everything, but it costs 3.2 MB, about
+   12 MB more across the five release binaries.
+4. **Leaked agent variables (Task 16).** The shell inherits the invoking
+   agent's `CLAUDECODE` and `CLAUDE_CODE_*` variables, including
+   `CLAUDE_CODE_MESSAGING_TOKEN`. A nested Claude Code showed a warning about
+   them on camera. The spec's list of scrubbed variables doesn't cover them.
+   Ruling: Task 16 strips `CLAUDECODE` and every `CLAUDE_CODE_*` variable
+   from the filmed shell.
 
 ## What was recorded
 
@@ -84,7 +90,7 @@ and a combining accent found:
   (`golang.org/x/text/unicode/norm`; `golang.org/x/text` is already in go.mod) or drop
   them. Only the probe produced one.
 
-## Decision: fallback font
+## Decision: fallback fonts
 
 These are every non-ASCII character the recordings contain that DejaVu Sans
 Mono can't draw, according to `fonts.Missing`:
@@ -99,50 +105,65 @@ Mono can't draw, according to `fonts.Missing`:
 
 DejaVu Sans Mono already covers everything else the sessions printed: Claude
 Code's spinner (`✢ ✳ ✶ ✻ ✽ ·`), `❯ ⚠ ◐ ✔ ✓ … — ↓ →`, block elements
-(`▐▛█▜▝▀▄░▓`), box drawing (`─│┌┐╌`), and `▶ ▽`. No braille appeared in any
-session. Coverage was still checked against all of U+2800-28FF, U+2500-259F,
+(`▐▛█▜▝▀▄░▓`), box drawing (`─│┌┐╌`), and `▶ ▽`. No session printed braille,
+but DejaVu Sans Mono has none of its 256 code points, so the chain must supply
+them. Coverage was also checked against all of U+2800-28FF, U+2500-259F,
 U+23E9-23FA, and a handful of other CLI symbols.
 
 Candidates (coverage from a scratch `sfnt` program):
 
 | Font | ⏺ ⏵ ⏸ | ⎿ | Braille | Size |
 |---|---|---|---|---|
-| DejaVu Sans (already embedded) | no | no | yes | - |
-| Noto Sans Math | no | no | no | 1.0 MB |
-| Noto Sans Symbols 2 | yes | **no** | yes | 672 KB |
-| Noto Sans Symbols | no | yes | no | 145 KB |
-| **JuliaMono Regular** | yes | yes | yes | 3.2 MB |
+| DejaVu Sans Mono (the terminal font) | no | no | no (0 of 256) | - |
+| Noto Sans Math | no | no | no | 642 KB (657,440 bytes, static unhinted; the google/fonts build is 1.0 MB) |
+| Noto Sans Symbols 2 | yes | **no** | yes (256 of 256) | 656 KB |
+| Noto Sans Symbols | no | yes | no | 142 KB |
+| JuliaMono Regular | yes | yes | yes | 3.2 MB |
 
-Noto Sans Math lacks `⎿`, and so does every Noto font tried except Noto Sans
-Symbols (1). The fewest fonts that cover the set is **one: JuliaMono Regular.**
-It's monospaced, so its glyphs are exactly one DejaVu Sans Mono cell wide at
-the same size (17 px at 28 px, against 25 px for Noto's `⏺`). It also covers
-`ℹ`, `☰`, `⏩`-`⏳`, and the whole braille block.
+DejaVu Sans, the proportional card font, does have braille, but it isn't part
+of the terminal chain. Every Noto font tried lacks `⎿` except Noto Sans
+Symbols. The Noto fonts also lack `⏺`, except Noto Sans Symbols 2.
 
-**Chosen:** `internal/fonts/JuliaMono-Regular.ttf`, license in
-`internal/fonts/LICENSE-JuliaMono`. Task 17 appends it to the chain after
-DejaVu Sans Mono: `fallbacks = [JuliaMono]`.
+**Chosen (controller ruling):** Noto Sans Symbols 2 and Noto Sans Symbols,
+817 KB together. JuliaMono would also cover everything in one font, but it
+costs 3.2 MB per binary, about 12 MB more across the five release binaries.
 
-| | |
-|---|---|
-| Source | https://github.com/cormullion/juliamono/releases/download/v0.63.2/JuliaMono-ttf.zip (release v0.63.2, 2026-07-18), file `JuliaMono-Regular.ttf` |
-| SHA-256 of the zip | `bc7140ccf1cbd84ee66a4c00a41628ee0a531a241e521773bad25a10c5066795` |
-| SHA-256 of `JuliaMono-Regular.ttf` | `40a07da0d1601215eb6b89312eb44128a3e2f36675d3e1f518264bd391fc7023` (3,261,260 bytes) |
-| SHA-256 of `LICENSE-JuliaMono` | `bae3beff9e15f1a680c2764c4bbdb25b995b9bf539aeaf8467482a495c75ad0c` (the zip's `LICENSE`, identical to the repository's) |
-| License | SIL Open Font License 1.1, Copyright (c) 2020 - 2023 cormullion, Reserved Font Name "JuliaMono". Embedding and redistribution are fine. A subsetted or otherwise modified copy could not keep the name JuliaMono. |
+**Chain order for Task 17:** DejaVu Sans Mono, then Noto Sans Symbols 2, then
+Noto Sans Symbols: `fallbacks = [NotoSansSymbols2, NotoSansSymbols]`. For every
+character in this spike the two Noto fonts are disjoint, so the order between
+them changes nothing today. Symbols 2 goes first because it covers the most.
 
-**Cost and the alternative.** JuliaMono adds 3.2 MB to every `movie` binary,
-roughly tripling the embedded font payload (DejaVu Sans plus Sans Mono come to
-1.1 MB). The two-font alternative, Noto Sans Symbols 2 plus Noto Sans Symbols,
-adds 817 KB and draws `⏺` and `⏸` larger and closer to how macOS terminals show
-them. The static unhinted files come from `notofonts.github.io`:
-- https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSansSymbols2/unhinted/ttf/NotoSansSymbols2-Regular.ttf (SHA-256 `c4a0a80f0041ce4be81e2478faad22776d23edb98ae3f0d19bd37044820ecf9d`)
-- https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSansSymbols/unhinted/ttf/NotoSansSymbols-Regular.ttf (SHA-256 `6eea9cb4cd39269ea9f95ba5c2735f80ae74049dfc9e1a7c932a5cfc8f0c3030`)
-- OFL 1.1 from https://github.com/notofonts/symbols/raw/main/OFL.txt (SHA-256 `b118dd41337806a5d4797052c77caf3bd096aed783e5eb21b4d11154351e1ac0`)
+**Verified.** A scratch coverage check ran that chain over every recording
+from both hosts plus the probe ranges: 476 distinct non-ASCII characters.
 
-The spike followed the brief's "fewest fonts" rule. If binary size matters
-more, swap in the Noto pair before Task 17; the chain order would be Symbols 2,
-then Symbols.
+- Every character a real session printed is covered. `⏵ ⏸ ⏺` and all 256
+  braille code points come from Noto Sans Symbols 2, and `⎿` from Noto Sans
+  Symbols.
+- Still missing from the chain, none printed by a real session:
+  - `漢 字 😀`: CJK and emoji, out of scope, typed by the probe.
+  - `ℹ` U+2139, `⏫` U+23EB, `⏬` U+23EC, `⏰` U+23F0: these appear only in the
+    spike's synthetic probe list. tmux draws the last three 2 cells wide, as
+    emoji. They get the replacement box and a `WARN`, as the spec intends.
+
+Noto's `⏺` is wider than a cell: its advance is 25 px against a 17 px DejaVu
+Sans Mono cell at 28 px. Task 17 should draw fallback glyphs centred in the
+cell. Clipping or scaling them isn't needed at the sizes seen.
+
+Files in `internal/fonts/` (not embedded yet; Task 17 wires them in):
+
+| File | Source | SHA-256 | Size |
+|---|---|---|---|
+| `NotoSansSymbols2-Regular.ttf` | https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSansSymbols2/unhinted/ttf/NotoSansSymbols2-Regular.ttf (last changed in commit `c16b117609ab`, 2023-10-13) | `c4a0a80f0041ce4be81e2478faad22776d23edb98ae3f0d19bd37044820ecf9d` | 671,568 bytes |
+| `NotoSansSymbols-Regular.ttf` | https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSansSymbols/unhinted/ttf/NotoSansSymbols-Regular.ttf (last changed in commit `1b2fe62733b8`, 2023-06-28) | `6eea9cb4cd39269ea9f95ba5c2735f80ae74049dfc9e1a7c932a5cfc8f0c3030` | 145,508 bytes |
+| `LICENSE-NotoSansSymbols` | https://github.com/notofonts/symbols/raw/main/OFL.txt (the one license for both fonts, which come from the same `notofonts/symbols` project; byte-identical to google/fonts' `ofl/notosanssymbols2/OFL.txt`) | `b118dd41337806a5d4797052c77caf3bd096aed783e5eb21b4d11154351e1ac0` | 4,383 bytes |
+
+**License:** SIL Open Font License 1.1, "Copyright 2022 The Noto Project
+Authors (https://github.com/notofonts/symbols)". It names no Reserved Font
+Name, and embedding in and redistributing with software is permitted.
+
+These are the static unhinted builds. The google/fonts copies of Noto Sans
+Symbols are variable fonts (`[wght]`), so they weren't used. The hinted and
+unhinted Symbols 2 files are byte-identical.
 
 ## Decision: locale for the session command
 
@@ -155,20 +176,13 @@ survive:
 | `LANG=C.UTF-8` | intact (od shows `c3 a9 e2 86 92 ...`) | intact |
 | `LANG=en_US.UTF-8` | intact | not available (`locale -a`: C, C.utf8, POSIX) |
 
-**Decision for Task 16:** `shellCommand` sets the locale explicitly:
-
-- Local sessions: if the host's effective character locale (`LC_ALL`, else
-  `LC_CTYPE`, else `LANG`) names UTF-8, change nothing, since it already
-  passes through. Otherwise add `-u LC_ALL -u LC_CTYPE LANG=C.UTF-8` to the
-  `env` line.
-- Wrapped sessions (`-- docker exec ...`): always add
-  `-u LC_ALL -u LC_CTYPE LANG=C.UTF-8`. `docker exec` doesn't pass the host's
-  environment, the e2e image sets no `LANG`, and `en_US.UTF-8` isn't installed
-  there.
-
-`C.UTF-8` exists on this macOS 26.5. The spike didn't check which older macOS
-releases have it. The pass-through branch covers the normal macOS case, since
-Terminal and iTerm set `LANG`.
+**Decision for Task 16 (controller ruling):** `shellCommand` sets
+`LANG=C.UTF-8` in every session, local and wrapped. It should also unset
+`LC_ALL` and `LC_CTYPE` (`-u LC_ALL -u LC_CTYPE`), because either one would
+override `LANG`. `C.UTF-8` was verified to work on this macOS 26.5 and in the
+bookworm container. `docker exec` doesn't pass the host's environment, and
+`en_US.UTF-8` isn't installed in the e2e image, so no host locale is passed
+through. The spike didn't check which older macOS releases have `C.UTF-8`.
 
 ## Decision: capture rates
 
@@ -232,10 +246,12 @@ other work ran on the Mac. The takeaways:
   `CLAUDE_CODE_MESSAGING_TOKEN`, `CLAUDE_CODE_EXECPATH`, `CLAUDE_PID`, and
   `CLAUDE_EFFORT`. Because of them the filmed Claude Code printed
   `⚠ Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION marker`.
-  The token would also show up if the take ran `env`. The names vary by
-  version, so the recommendation for Task 16 is to build the `-u` list from
-  `os.Environ()`, removing every `CLAUDECODE` and `CLAUDE_*` variable in local
-  sessions. Wrapped sessions don't inherit them.
+  The token would also show up if the take ran `env`. Ruling: Task 16 strips
+  `CLAUDECODE` and every `CLAUDE_CODE_*` variable. The names vary by version,
+  so the list is best built from `os.Environ()`. `CLAUDE_PID` and
+  `CLAUDE_EFFORT` fall outside that pattern and would still pass through;
+  neither triggered a visible effect. Wrapped sessions don't inherit any of
+  them.
 - **`COLORTERM` passes through.** On macOS the host's `COLORTERM=truecolor`
   reached Claude Code, which drew in 24-bit colour (`38;2`). The container has
   no `COLORTERM`, so the same program drew in 256 colours (`38;5`). Setting
