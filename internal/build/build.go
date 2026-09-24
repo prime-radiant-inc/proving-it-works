@@ -43,6 +43,8 @@ func Run(scenePath, out string, stdout io.Writer) (int, error) {
 		}
 		return 0, err
 	}
+	offsets := map[string]float64{}
+	clock := 0.0
 	var names []string
 	for _, sc := range f.Scenes {
 		c := clips[sc.ID]
@@ -50,14 +52,33 @@ func Run(scenePath, out string, stdout io.Writer) (int, error) {
 		if err != nil {
 			return 0, err
 		}
+		offsets[sc.ID] = clock
+		clock += d
 		fmt.Fprintf(stdout, "%s: %.1fs\n", sc.ID, d)
 		names = append(names, sc.ID+".mp4")
 	}
-	if err := concat(scratch, names, out); err != nil {
-		return 0, err
+	opts := check.Options{}
+	if !f.Narrated() {
+		if err := concat(scratch, names, out); err != nil {
+			return 0, err
+		}
+	} else {
+		cut := filepath.Join(scratch, "cut.mp4")
+		if err := concat(scratch, names, cut); err != nil {
+			return 0, err
+		}
+		srtPath := strings.TrimSuffix(out, filepath.Ext(out)) + ".srt"
+		speechEnd, err := writeSubtitles(srtPath, f, clips, offsets)
+		if err != nil {
+			return 0, err
+		}
+		if _, err := burn(scratch, cut, srtPath, out, stdout); err != nil {
+			return 0, err
+		}
+		opts = check.Options{ExpectAudio: true, ExpectSubtitles: true, SpeechEnd: &speechEnd}
 	}
-	fmt.Fprintf(stdout, "\nassembled %s\n\n", out)
-	return check.Run(out, check.Options{}, stdout)
+	fmt.Fprintf(stdout, "\nassembled %s (%.1fs)\n\n", out, clock)
+	return check.Run(out, opts, stdout)
 }
 
 // concat joins segments by their fixed safe names, running from scratch so

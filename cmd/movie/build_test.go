@@ -188,6 +188,35 @@ func TestMissingPiperVoiceIsAnEnvironmentErrorNamingTheFix(t *testing.T) {
 	}
 }
 
+func TestNarratedBuildWritesSubtitlesAndPassesTheCheck(t *testing.T) {
+	requirePiper(t)
+	dir := t.TempDir()
+	for i, c := range []string{"red", "green", "blue", "white", "black", "yellow", "cyan", "magenta", "gray", "orange"} {
+		still(t, dir, fmt.Sprintf("run/f%02d.png", i), c)
+	}
+	writeFile(t, dir, "demo.yaml", `size: 320x180
+fps: 10
+engine: piper
+scenes:
+  - id: title
+    card: proving it works
+    duration: 2
+  - id: run
+    frames: run
+    rate: 1
+    narration: The run takes ten seconds, and this sentence is much shorter than that.
+`)
+	r := runMovie(t, dir, "build", "demo.yaml", "demo.mp4")
+	if r.code != 0 || !strings.Contains(r.stdout, "Mechanical checks pass") {
+		t.Fatalf("code %d\n%s%s", r.code, r.stdout, r.stderr)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "demo.srt"))
+	// the run scene starts after the 2 s card (plus a few ms of audio padding)
+	if err != nil || !strings.Contains(string(data), "\n00:00:02,") {
+		t.Fatalf("subtitles should start at the run scene's offset, about 2 s:\n%s", data)
+	}
+}
+
 func TestOpenAIVoiceNarrates(t *testing.T) {
 	if os.Getenv("OPENAI_API_KEY") == "" {
 		t.Skip("needs OPENAI_API_KEY")
