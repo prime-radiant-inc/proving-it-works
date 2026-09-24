@@ -141,14 +141,16 @@ func Render(dir, outdir string, px image.Point, stdout io.Writer) error {
 				return err
 			}
 		}
-		meta, _ := json.MarshalIndent(map[string]any{"id": name, "frames": takeDir, "rate": FPS,
-			"seconds": math.Round((t.End-t.Start)*10) / 10}, "", "  ")
+		meta, _ := json.MarshalIndent(map[string]any{"frames": takeDir, "rate": FPS}, "", "  ")
 		if err := os.WriteFile(filepath.Join(takeDir, "take.json"), meta, 0o644); err != nil {
 			return err
 		}
 		fmt.Fprintf(stdout, "%s: %d frames, %.1fs -> %s\n", name, len(slots), t.End-t.Start, takeDir)
 	}
 	r.warnMissing(stdout)
+	if end := entries[len(entries)-1]; end.End && end.Reason != "" {
+		fmt.Fprintf(stdout, "WARN       the recording ended without a stop: %s\n", end.Reason)
+	}
 	return nil
 }
 

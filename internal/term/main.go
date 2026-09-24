@@ -137,7 +137,7 @@ func dispatch(verb string, args []string, stdout, stderr io.Writer) (int, error)
 		if len(args) != 1 {
 			return exitcode.Usage, fmt.Errorf("needs SESSION")
 		}
-		return exitcode.OK, Record(args[0])
+		return exitcode.OK, Record(args[0], stderr)
 	}
 	fmt.Fprint(stderr, usage)
 	return exitcode.Usage, fmt.Errorf("unknown verb %q", verb)

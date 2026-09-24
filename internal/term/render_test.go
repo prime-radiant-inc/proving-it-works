@@ -71,6 +71,32 @@ func TestReadRecordingErrorsOnABadLineFollowedByMore(t *testing.T) {
 	}
 }
 
+func TestRenderWarnsWhenTheRecordingEndedWithoutAStop(t *testing.T) {
+	dir := t.TempDir()
+	writeRecording(t, dir, `{"t":0,"film":true,"cols":10,"rows":2,"screen":"hi\n"}`+"\n"+
+		`{"t":1,"end":true,"reason":"tmux display-message: exit status 1: no server running"}`+"\n")
+	var out bytes.Buffer
+	if err := Render(dir, filepath.Join(dir, "frames"), image.Pt(200, 100), &out); err != nil {
+		t.Fatal(err)
+	}
+	want := "WARN       the recording ended without a stop: tmux display-message: exit status 1: no server running"
+	if !strings.Contains(out.String(), want) {
+		t.Fatalf("render printed:\n%s\nwant a line containing %q", out.String(), want)
+	}
+}
+
+func TestRenderDoesNotWarnAboutAStoppedRecording(t *testing.T) {
+	dir := t.TempDir()
+	writeRecording(t, dir, `{"t":0,"film":true,"cols":10,"rows":2,"screen":"hi\n"}`+"\n"+`{"t":1,"end":true}`+"\n")
+	var out bytes.Buffer
+	if err := Render(dir, filepath.Join(dir, "frames"), image.Pt(200, 100), &out); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "WARN") {
+		t.Fatalf("render warned about a stopped recording:\n%s", out.String())
+	}
+}
+
 func TestRenderMatchesGoldenFramesWithinTolerance(t *testing.T) {
 	entries, err := readRecording("testdata/session")
 	if err != nil {

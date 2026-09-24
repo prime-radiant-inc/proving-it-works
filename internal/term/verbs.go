@@ -66,12 +66,10 @@ func Start(dir string, o StartOptions, stdout io.Writer) (err error) {
 	if cwd != "" {
 		args = append(args, "-c", cwd)
 	}
-	var scrub []string
-	if len(o.Wrapper) == 0 {
-		// A wrapped session gets the container's own environment, which
-		// never carried the host's CLAUDE* variables to begin with.
-		scrub = claudeEnvNames(os.Environ())
-	}
+	// A wrapper may pass the host's environment through (env does, and so
+	// may a wrapper script), so scrub wrapped sessions too; env -u of a
+	// name the container never had is harmless.
+	scrub := claudeEnvNames(os.Environ())
 	args = append(args, shellCommand(s.History, scrub), ";",
 		"set-option", "-t", window, "status", "off", ";",
 		"set-option", "-t", window, "@movie_film", "on", ";",
@@ -192,14 +190,48 @@ func Screen(s *Session, stdout io.Writer) error {
 	return nil
 }
 
+// filmOffAck is the tmux option the recorder sets to 1 once it has filmed
+// and held the screen at a film off.
+const filmOffAck = "@movie_film_ack"
+
 // SetFilm turns filming on or off; each "on" after "off" starts a new take.
+//
+// Turning filming off hands off to the recorder the way Stop does: the
+// recorder polls on its own clock, so a command's result that run has just
+// seen may not be recorded yet. SetFilm clears the acknowledgement and turns
+// filming off in one tmux call, then waits for the recorder to film the
+// current screen, hold it, and acknowledge, so the caller's next action
+// cannot race that last filmed screen.
 func SetFilm(s *Session, on bool) error {
-	value := "off"
 	if on {
-		value = "on"
+		_, err := s.tmux("set-option", "-t", window, "@movie_film", "on")
+		return err
 	}
-	_, err := s.tmux("set-option", "-t", window, "@movie_film", value)
-	return err
+	st, err := s.status(false)
+	if err != nil {
+		return err
+	}
+	if !st.Film {
+		return nil
+	}
+	if _, err := s.tmux("set-option", "-t", window, filmOffAck, "0", ";",
+		"set-option", "-t", window, "@movie_film", "off"); err != nil {
+		return err
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		out, err := s.tmux("display-message", "-p", "-t", window, "#{"+filmOffAck+"}")
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(out) == "1" {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("the recorder did not confirm filming stopped; see %s", filepath.Join(s.Dir, "recorder.log"))
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 // Outcome is what run and wait report, on one JSON line before the screen.

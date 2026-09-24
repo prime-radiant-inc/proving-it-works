@@ -15,8 +15,10 @@ m="$SKILL_DIR/bin/movie"
 "$m" term stop take/ frames/                # frames/take-1/ + take.json
 ```
 
-`frames/take-1/take.json` holds a ready-to-paste scene:
-`frames: .../take-1`, `rate: 10`.
+`frames/take-1/take.json` holds a ready-to-paste scene body:
+`{"frames": "/abs/path/frames/take-1", "rate": 10}`. Give the scene an `id`
+when you paste it into your scene file; you may also make the path relative
+to the scene file.
 
 ## The verbs
 
@@ -43,6 +45,15 @@ An agent run or a build takes minutes. Film the command being issued, then
 from the command to its result, and a card in the scene file can say how
 long it took. The work is real; the tedium is not. Time inside a take is
 never compressed.
+
+`film off` films the screen as it stands and holds it for 1.5 seconds
+before the take ends, as `stop` does, so the result of the last `run` is
+always in the take.
+
+If tmux stops answering (the shell exited, the container stopped), the
+recorder gives up after five failed polls in a row, and `stop` and `render`
+print a `WARN` saying why the recording ended. The failures are in
+`SESSION/recorder.log`.
 
 ## The session is clean
 

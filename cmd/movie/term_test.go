@@ -66,10 +66,15 @@ func TestTermFilmsACommandIntoFrames(t *testing.T) {
 	if len(frames) < 15 {
 		t.Fatalf("take-1 has %d frames, want at least 15 (the final screen held 1.5s)", len(frames))
 	}
-	var take struct{ Rate float64 }
+	// take.json is a paste-ready frames scene body: frames and rate, nothing else.
+	var take map[string]any
 	data, err := os.ReadFile(filepath.Join(takes, "take-1", "take.json"))
-	if err != nil || json.Unmarshal(data, &take) != nil || take.Rate != 10 {
+	if err != nil || json.Unmarshal(data, &take) != nil {
 		t.Fatalf("take.json: %s %v", data, err)
+	}
+	wantFrames, _ := filepath.Abs(filepath.Join(takes, "take-1"))
+	if len(take) != 2 || take["rate"] != float64(10) || take["frames"] != wantFrames {
+		t.Fatalf("take.json = %s, want exactly frames %q and rate 10", data, wantFrames)
 	}
 
 	// The last non-end entry of the recording is the flush snapshot Stop
@@ -175,6 +180,109 @@ func TestFilmOffSplitsTakes(t *testing.T) {
 	}
 }
 
+// readEntries reads a session's recording.jsonl.
+func readEntries(t *testing.T, session string) []term.Entry {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(session, "recording.jsonl"))
+	if err != nil {
+		t.Fatalf("recording.jsonl: %v", err)
+	}
+	var entries []term.Entry
+	for _, line := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
+		var e term.Entry
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			t.Fatalf("recording.jsonl line %q: %v", line, err)
+		}
+		entries = append(entries, e)
+	}
+	return entries
+}
+
+// hasLine reports whether screen has a line that is exactly want.
+func hasLine(screen, want string) bool { return slices.Contains(strings.Split(screen, "\n"), want) }
+
+// TestFilmOffRightAfterRunKeepsTheResultAndHoldsIt: run returns when its own
+// poll sees the prompt, and the recorder polls on its own clock, so film off
+// must hand off to the recorder the way stop does: the result is filmed and
+// held for 1.5 s before the take ends. Run it with -count=10.
+func TestFilmOffRightAfterRunKeepsTheResultAndHoldsIt(t *testing.T) {
+	dir := t.TempDir()
+	session := startSession(t, dir)
+	if r := runMovie(t, dir, "term", "run", session, "echo RESULT-LINE"); r.code != 0 {
+		t.Fatalf("run: code %d\n%s%s", r.code, r.stdout, r.stderr)
+	}
+	if r := runMovie(t, dir, "term", "film", session, "off"); r.code != 0 {
+		t.Fatalf("film off: code %d\n%s%s", r.code, r.stdout, r.stderr)
+	}
+	takes := filepath.Join(dir, "takes")
+	if r := runMovie(t, dir, "term", "stop", session, takes); r.code != 0 {
+		t.Fatalf("stop: code %d\n%s%s", r.code, r.stdout, r.stderr)
+	}
+	all := term.Takes(readEntries(t, session))
+	if len(all) != 1 {
+		t.Fatalf("got %d takes, want 1", len(all))
+	}
+	take := all[0]
+	result := -1
+	for i, e := range take.Entries {
+		if hasLine(e.Screen, "RESULT-LINE") {
+			result = i
+			break
+		}
+	}
+	if result < 0 {
+		t.Fatal("no filmed entry shows the line RESULT-LINE")
+	}
+	if held := take.End - take.Entries[result].T; held < 1.5 {
+		t.Fatalf("the result is on screen for %.2fs of the take, want at least 1.5s", held)
+	}
+	if last := take.Entries[len(take.Entries)-1]; !hasLine(last.Screen, "RESULT-LINE") {
+		t.Fatalf("the last filmed entry has no line exactly RESULT-LINE:\n%q", last.Screen)
+	}
+	frames, _ := filepath.Glob(filepath.Join(takes, "take-1", "f*.png"))
+	if want := len(term.Slots(take, term.FPS)); len(frames) != want {
+		t.Fatalf("take-1 has %d frames, want %d", len(frames), want)
+	}
+}
+
+// TestARecordingThatEndsWithoutStopSaysWhy: when the tmux server goes away
+// under the recorder, it logs each failed poll, gives up after five, records
+// why in the end entry, and render warns about it.
+func TestARecordingThatEndsWithoutStopSaysWhy(t *testing.T) {
+	dir := t.TempDir()
+	session := startSession(t, dir)
+	runMovie(t, dir, "term", "run", session, "echo hi")
+	var s struct{ Socket string }
+	data, _ := os.ReadFile(filepath.Join(session, "session.json"))
+	if err := json.Unmarshal(data, &s); err != nil {
+		t.Fatal(err)
+	}
+	exec.Command("tmux", "-S", s.Socket, "kill-server").Run()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := os.Stat(filepath.Join(session, "recorder.done")); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the recorder never finished")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	entries := readEntries(t, session)
+	end := entries[len(entries)-1]
+	if !end.End || !strings.Contains(end.Reason, "tmux") {
+		t.Fatalf("last entry = %+v, want an end entry whose reason names the tmux failure", end)
+	}
+	log, _ := os.ReadFile(filepath.Join(session, "recorder.log"))
+	if n := strings.Count(string(log), "\n"); n < 5 {
+		t.Fatalf("recorder.log has %d lines, want one per failed poll (5):\n%s", n, log)
+	}
+	r := runMovie(t, dir, "term", "render", session, filepath.Join(dir, "frames"))
+	if r.code != 0 || !strings.Contains(r.stdout, "WARN") || !strings.Contains(r.stdout, end.Reason) {
+		t.Fatalf("render: code %d, want a WARN naming %q\n%s%s", r.code, end.Reason, r.stdout, r.stderr)
+	}
+}
+
 func TestRenderWorksAfterTheSessionIsGoneAndRefusesAUsedDirectory(t *testing.T) {
 	dir := t.TempDir()
 	session := startSession(t, dir)
@@ -230,12 +338,19 @@ func TestFilmedShellNeverInheritsAgentVariables(t *testing.T) {
 }
 
 // A pass-through wrapper stands in for docker exec: every tmux call goes
-// through it, and the prompt still installs.
+// through it, and the prompt still installs. The env wrapper passes the
+// host's variables through, as a wrapper may, so the CLAUDE* scrub must
+// apply to wrapped sessions too.
 func TestWrappedSessionRunsThroughTheWrapper(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_TEST_TOKEN", "secret-token-xyz")
 	dir := t.TempDir()
 	session := startSession(t, dir, "--", "env", "MOVIE_WRAPPED=yes")
 	r := runMovie(t, dir, "term", "run", session, "echo wrapped:$MOVIE_WRAPPED")
 	if r.code != 0 || !strings.Contains(r.stdout, "wrapped:yes") {
 		t.Fatalf("code %d\n%s%s", r.code, r.stdout, r.stderr)
+	}
+	r = runMovie(t, dir, "term", "run", session, "env | grep CLAUDE_CODE_TEST_TOKEN")
+	if strings.Contains(r.stdout, "secret-token-xyz") {
+		t.Fatalf("the wrapped shell's env leaked CLAUDE_CODE_TEST_TOKEN:\n%s", r.stdout)
 	}
 }
