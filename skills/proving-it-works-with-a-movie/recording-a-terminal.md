@@ -29,7 +29,7 @@ m="$SKILL_DIR/bin/movie"
 | `wait SESSION [--quiet S] [--timeout 60]` | wait for the prompt (0 or 1), or for the screen to hold still for S seconds (3, still running) | |
 | `screen SESSION` | print the screen as text | 0 |
 | `film SESSION on\|off` | keep what follows out of the movie; each `on` starts a new take | 0 |
-| `stop SESSION OUTDIR` | end the session and render every take | 0 |
+| `stop SESSION OUTDIR [--px 1600x900]` | end the session and render every take | 0 |
 | `render SESSION OUTDIR [--px 1600x900]` | render again from the recording, even after the session is gone | 0 |
 
 `run` refuses while a command is still running, so keys never land in a

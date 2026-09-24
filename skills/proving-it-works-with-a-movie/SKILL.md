@@ -18,10 +18,13 @@ movie.** Not the frames going in. The finished file coming out.
 
 | What you have to show | Route |
 |---|---|
-| Interaction happening: typing, clicking, a list updating live | Browser-driven motion → recording-motion.md |
-| A CLI, a TUI, an install, a test run, an agent working | Terminal → recording-a-terminal.md |
-| A sequence of real states, motion optional | Composited stills → rendering-stills.md |
-| OS capture blocked (wallpaper-only frames), or the thing to prove is a *run*, not a UI | Reel rendered from the run's own log → rendering-from-a-log.md |
+| Interaction happening: typing, clicking, a list updating live | Drive a browser and capture frames → recording-motion.md |
+| A desktop app's window | Capture the window with ffmpeg → recording-motion.md |
+| A CLI, a TUI, an install, a test run, an agent working | `movie term` → recording-a-terminal.md |
+| A sequence of real states, motion optional | Screenshots as `image` scenes → rendering-stills.md |
+| OS capture blocked (wallpaper-only frames), or the thing to prove is a *run*, not a UI | Frames rendered from the run's own log → rendering-from-a-log.md |
+
+Every route ends in `movie build` (assembling.md) and its gate.
 
 Stills are a legitimate movie. Reach for motion only when the *motion* is
 the claim; it costs several times more to build and is where sync defects
@@ -93,6 +96,7 @@ frame, a transition) has to be held longer than a second. Then:
 
 ## Keep the pipeline
 
-Scene list, narration text, and build scripts are **committed files**, not
-scratch. Scratch directories get cleaned mid-production and a movie you
-can't rebuild is a movie you can't fix. See assembling.md.
+The scene file, narration text, and whatever script drives the recording are
+**committed files**, not scratch. Scratch directories get cleaned
+mid-production and a movie you can't rebuild is a movie you can't fix. See
+assembling.md.

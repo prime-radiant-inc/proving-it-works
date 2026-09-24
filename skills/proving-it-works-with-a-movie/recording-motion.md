@@ -99,6 +99,9 @@ const shot = await Promise.race([
 if (shot) writeFrame(shot.data);   // dropped frames are fine; a hung loop is not
 ```
 
+Write each frame as a numbered PNG into one directory; that directory is a
+`frames` scene.
+
 ## Slow real work does not fit inside a scene
 
 A genuine multi-minute operation (a model generating, a build, a deploy)
@@ -119,25 +122,29 @@ scene depends on a job outliving the process that started it.
 - **Typed fields with parsers**: a value like `Yes`/`No`/`On`/`Off` in a
   YAML-backed form field saves as a boolean and can crash the app on camera.
 
-## Native Windows desktop capture
+## Capturing a desktop app's window
 
-FFmpeg's `gdigrab` captures one window by its exact title, or the whole
-desktop with `-i desktop`. From an ordinary-user interactive desktop:
+One ffmpeg command per OS captures a window or the screen into frames that
+`movie build` takes as a `frames` scene. First capture two seconds and look
+at a still: when screen-recording permission is missing, capture
+"succeeds" and records wallpaper.
 
-```powershell
-$check = "$HOME/movie capture check"
-[IO.Directory]::CreateDirectory($check) | Out-Null
-$arguments = @('-nostdin','-y','-f','gdigrab','-framerate','5','-i',
-    'title=Your application window title','-t','2',"$check/window-check.mp4")
-& ffmpeg @arguments
-if ($LASTEXITCODE -ne 0) { throw 'Window capture unavailable' }
-$arguments = @('-nostdin','-y','-i',"$check/window-check.mp4",
-    '-frames:v','1',"$check/window-check.png")
-& ffmpeg @arguments
+```bash
+# macOS: list devices, then capture screen N (grant Screen Recording to your terminal)
+ffmpeg -f avfoundation -list_devices true -i ""
+ffmpeg -nostdin -f avfoundation -framerate 10 -capture_cursor 1 -i 'N:none' -t 2 -vf fps=10 check/f%04d.png
+
+# Linux (X11)
+ffmpeg -nostdin -f x11grab -framerate 10 -i "$DISPLAY" -t 2 -vf fps=10 check/f%04d.png
 ```
 
-Look at the PNG. A zero exit with wallpaper or a blank window is not a
-capture; only visible application pixels are. On the host this was tested
-on, the window-title form captured the app and `-i desktop` returned only
-wallpaper. If neither shows the app, use the browser route and say what
-remains unproven.
+```powershell
+# Windows: one window by its exact title
+ffmpeg -nostdin -f gdigrab -framerate 10 -i 'title=Your application window title' -t 2 -vf fps=10 check/f%04d.png
+```
+
+Look at `check/f0010.png`. Only visible application pixels are a capture;
+wallpaper or a blank window means permission is blocked. Then capture the
+real take into a new directory and use it as `frames: that-directory`,
+`rate: 10`. If no capture shows the app, use the browser route or a reel
+rendered from the log, and say what remains unproven.

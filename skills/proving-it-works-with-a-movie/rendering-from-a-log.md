@@ -54,21 +54,21 @@ left no residue.
 ## Draw frames from the log
 
 Render title / exact command / result / before-after diff / evidence-bundle
-panels as images and stream them into one ffmpeg pipe. Keep it in a saved,
-re-runnable `generate_reel.py`, not a one-shot heredoc.
+panels as images and write each one as a numbered PNG into one directory.
+Keep it in a saved, re-runnable `generate_reel.py`, not a one-shot heredoc.
 
 ```python
-cmd = ["ffmpeg", "-y", "-hide_banner", "-f", "rawvideo", "-pix_fmt", "rgb24",
-       "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-", "-an", "-c:v", "libx264",
-       "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p", "out.mp4"]
-proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+from pathlib import Path
+out = Path("frames/reel"); out.mkdir(parents=True, exist_ok=True)
+index = 0
 for nframes, render in scenes:                     # render(t) -> PIL RGB image
     for i in range(nframes):
-        proc.stdin.write(render(i / max(1, nframes - 1)).tobytes())
-proc.stdin.close()
-if proc.wait() != 0:
-    raise SystemExit("ffmpeg failed")
+        render(i / max(1, nframes - 1)).save(out / f"f{index:05d}.png")
+        index += 1
 ```
+
+Then use `frames: frames/reel` with the rate you rendered at, in a scene
+file for `movie build`.
 
 ## Hash the bundle
 
@@ -76,7 +76,7 @@ The reel is *derived from* the log and snapshots; they ship next to it, not
 instead of it.
 
 ```bash
-shasum -a 256 out.mp4 contact-sheet.png run.log > SHA256SUMS
+shasum -a 256 reel.mp4 reel-check/contact-sheet.png run.log > SHA256SUMS
 shasum -a 256 -c SHA256SUMS
 ```
 
@@ -86,7 +86,7 @@ log is a lie.
 
 ## Gate it
 
-`"$SKILL_DIR/bin/movie" check reel.mp4 --no-expect-audio` if the reel is
-silent (`$SKILL_DIR` = this skill's own directory; see SKILL.md). Then open
-the contact sheet and confirm the panels are legible at full size: a reel
+`movie build` runs the gate on the reel. A silent reel with no narration is
+checked as silent and passes; add narration to explain it. Then open the
+contact sheet and confirm the panels are legible at full size: a reel
 nobody can read proves nothing.
