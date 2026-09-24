@@ -86,7 +86,7 @@ log is a lie.
 
 ## Gate it
 
-`"$SKILL_DIR/scripts/check-movie" reel.mp4 --no-expect-audio` if the reel is
+`"$SKILL_DIR/bin/movie" check reel.mp4 --no-expect-audio` if the reel is
 silent (`$SKILL_DIR` = this skill's own directory; see SKILL.md). Then open
 the contact sheet and confirm the panels are legible at full size: a reel
 nobody can read proves nothing.

@@ -188,30 +188,6 @@ class SubtitleTrackContract(unittest.TestCase):
                     self.assertEqual("burn failed" in stderr.getvalue(), not soft)
 
 
-class SubtitleParserContract(unittest.TestCase):
-    def setUp(self):
-        self.module = fixtures.load_script("check-movie")
-
-    def test_literal_arrow_in_caption_is_not_a_timing_line(self):
-        self.assertEqual(self.module.subtitle_end("1\n00:00:00,000 --> 00:00:01,250\nFollow source --> destination.\n"), 1.25)
-
-    def test_timestamp_shaped_caption_cannot_extend_coverage(self):
-        text = "1\n00:00:00,000 --> 00:00:01,250\n00:00:00,000 --> 00:59:00,000\n"
-        self.assertEqual(self.module.subtitle_end(text), 1.25)
-
-    def test_malformed_actual_timing_is_rejected(self):
-        for timing in ("00:00:00,000 --> invalid", "not a timing line", "00:00:00,000 --> 00:99:00,000"):
-            with self.subTest(timing=timing), self.assertRaises(ValueError):
-                self.module.subtitle_end(f"1\n{timing}\ncaption\n")
-
-    def test_empty_subtitles_have_no_end(self):
-        self.assertIsNone(self.module.subtitle_end("\n  \n"))
-
-    def test_multiple_cues_keep_existing_latest_end_policy(self):
-        text = "1\n00:00:00,000 --> 00:00:10,250\nFirst\n\n2\n00:00:05,000 --> 00:00:06,000\nSecond\n"
-        self.assertEqual(self.module.subtitle_end(text), 10.25)
-
-
 class SubtitleHandoffContract(unittest.TestCase):
     def test_rerun_removed_opening_narration_keeps_evidence_and_retimes_remaining_caption(self):
         narrate = fixtures.load_script("narrate")

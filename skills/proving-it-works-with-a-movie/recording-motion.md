@@ -78,7 +78,7 @@ Stage a visible marker of **the event**, not the effect: navigate to
 teardown and a genuinely blank beat on camera, then the restored state.
 Same for a restart — show the process dying.
 
-Hold that marker beat for **more than one second**. `check-movie` samples the
+Hold that marker beat for **more than one second**. `movie check` samples the
 picture at 1 Hz; a 600ms blank falls between two samples and is invisible to
 the gate even though it is real. Anything you want the checker (or a viewer)
 to register needs ~1.3s or more.

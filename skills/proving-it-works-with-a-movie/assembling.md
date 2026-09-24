@@ -94,7 +94,7 @@ ffprobe -v error -show_entries format=duration,size \
 ```
 
 `ffprobe` proves the container is real. It says nothing about whether the
-movie is watchable — that is `check-movie` plus your own eyes on the contact
+movie is watchable — that is `movie check` plus your own eyes on the contact
 sheet.
 
 ## Keep the pipeline out of scratch

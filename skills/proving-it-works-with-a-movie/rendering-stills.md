@@ -43,7 +43,7 @@ faster than ~2.5s is unreadable.
 
 ## 4. Gate it
 
-Run `"$SKILL_DIR/scripts/check-movie"` (see SKILL.md for the path), open the
+Run `"$SKILL_DIR/bin/movie" check` (see SKILL.md for the path), open the
 contact sheet, and look. A stills movie earns a
 frozen-tail warning when its final card outlasts its last narration by a
 lot — that usually means the closing card is doing too much work, or the

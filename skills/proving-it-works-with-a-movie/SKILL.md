@@ -49,7 +49,7 @@ set -euo pipefail
 "$SKILL_DIR/scripts/make-subtitles" narration/manifest.json movie.srt \
                                     --offsets-json segments/offsets.json
 "$SKILL_DIR/scripts/burn-subtitles" silent-cut.mp4 movie.srt movie.mp4
-"$SKILL_DIR/scripts/check-movie"    movie.mp4      # nonzero exit: do not ship
+"$SKILL_DIR/bin/movie" check      movie.mp4      # nonzero exit: do not ship
 ```
 
 For each current narrated non-movie scene, downstream tools accept only a

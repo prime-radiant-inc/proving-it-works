@@ -57,9 +57,9 @@ recording against a copy of your data rather than the real thing.
 | `make-subtitles` | an SRT timed to the measured clips (subtitles are the default, not a nicety) |
 | `assemble` | scenes into a cut, each segment held to max(narration, visuals) |
 | `burn-subtitles` | into the picture where libass exists, a soft track where it doesn't |
-| `check-movie` | the gate |
+| `movie check` | the gate (a Go binary in `bin/`; the other scripts are being ported) |
 
-### `check-movie`
+### `movie check`
 
 The mechanical gate. It samples picture and sound on one timeline and fails
 a movie when the action is crammed into the opening seconds while narration
@@ -68,7 +68,7 @@ when the audio is silent. It writes a contact sheet you are then expected to
 actually look at.
 
 ```
-$ skills/proving-it-works-with-a-movie/scripts/check-movie demo.mp4
+$ skills/proving-it-works-with-a-movie/bin/movie check demo.mp4
 container  h264 1280x800, 26.8s, audio=yes
 picture    reaches a new state in 2 of 26 seconds; last at 3s
 sound      audible in 24 of 24 seconds; last at 23s
@@ -117,7 +117,7 @@ It runs on every harness below; each one reads the same skill from `skills/`.
 ## Requirements
 
 - `ffmpeg` and `ffprobe`
-- `uv` (runs `check-movie`; it declares its own dependencies inline)
+- `uv` (runs the remaining Python scripts; each declares its own dependencies inline)
 - For the browser routes: Chrome plus a driver (Playwright or raw CDP)
 - For narration: any TTS you like — see the skill's `narrating.md` for which
   kinds lie to you and how to catch them
@@ -125,6 +125,7 @@ It runs on every harness below; each one reads the same skill from `skills/`.
 ## Tests
 
 ```
+go test ./...
 uv run --script tests/proving-it-works-with-a-movie/run-tests.py --suite all
 ```
 

@@ -4,7 +4,6 @@ Run a suite from the repository root:
 
 ```sh
 uv run --script tests/proving-it-works-with-a-movie/run-tests.py --suite assembly
-uv run --script tests/proving-it-works-with-a-movie/run-tests.py --suite checker
 uv run --script tests/proving-it-works-with-a-movie/run-tests.py --suite contracts
 uv run --script tests/proving-it-works-with-a-movie/run-tests.py --suite narration
 uv run --script tests/proving-it-works-with-a-movie/run-tests.py --suite all

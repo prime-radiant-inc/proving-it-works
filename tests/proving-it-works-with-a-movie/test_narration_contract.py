@@ -523,24 +523,6 @@ class PercentPathContract(unittest.TestCase):
         pattern = module.sequence_pattern(Path("folder%name") / "frames", "frame-%08d.png")
         self.assertEqual(pattern, "folder%%name/frames/frame-%08d.png")
 
-    def test_checker_sampling_escapes_only_output_directory_percents(self):
-        module = fixtures.load_script("check-movie")
-        with tempfile.TemporaryDirectory() as directory:
-            work = Path(directory) / "proof%take"
-            work.mkdir()
-            command = []
-
-            def run(argv, **kwargs):
-                command.extend(argv)
-                return subprocess.CompletedProcess(argv, 0, "", "")
-
-            with patch.object(module.subprocess, "run", side_effect=run), redirect_stdout(io.StringIO()):
-                with self.assertRaises(SystemExit):
-                    module.sample_picture(Path("movie.mp4"), work)
-            output = command[-1]
-            self.assertIn("proof%%take", output)
-            self.assertTrue(output.endswith("s%05d.png"))
-
 
 if __name__ == "__main__":
     unittest.main()

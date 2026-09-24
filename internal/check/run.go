@@ -18,9 +18,9 @@ func WorkDir(movie string) string {
 	return strings.TrimSuffix(movie, filepath.Ext(movie)) + "-check"
 }
 
-// Run checks movie, prints the verdict, and writes check.json. It returns
-// exitcode.OK or exitcode.Verdict; an error means the movie could not be
-// examined at all.
+// Run checks movie, prints the verdict, and writes check.json and the contact
+// sheet. It returns exitcode.OK or exitcode.Verdict; an error means the movie
+// could not be examined at all.
 func Run(movie string, o Options, stdout io.Writer) (int, error) {
 	movie, err := filepath.Abs(movie)
 	if err != nil {
@@ -44,11 +44,53 @@ func Run(movie string, o Options, stdout io.Writer) (int, error) {
 	if err := os.MkdirAll(workdir, 0o755); err != nil {
 		return 0, err
 	}
-	m := Measurements{Duration: info.Duration, HasAudio: info.Has("audio")}
-	r := Evaluate(m, o)
+	paths, changes, err := samplePicture(movie, workdir)
+	if err != nil {
+		return 0, err
+	}
+	m := Measurements{Duration: info.Duration, HasAudio: info.Has("audio"), Changes: changes}
+	if m.HasAudio {
+		if m.Levels, err = sampleSound(movie); err != nil {
+			return 0, err
+		}
+	}
+	var subs Subtitles
+	if NeedsSubtitles(m, o) {
+		if subs, err = findSubtitles(movie, info); err != nil {
+			return 0, err
+		}
+	}
+	r := Evaluate(m, subs, o)
+
 	fmt.Fprintf(stdout, "container  %s %dx%d, %.1fs, audio=%s\n",
 		video.CodecName, video.Width, video.Height, info.Duration, yesNo(m.HasAudio))
+	fmt.Fprintf(stdout, "picture    reaches a new state in %d of %d seconds%s\n",
+		len(r.ChangeSeconds), max(len(changes), 1), lastAt(r.ChangeSeconds))
+	if len(m.Levels) > 0 {
+		fmt.Fprintf(stdout, "sound      audible in %d of %d seconds%s\n",
+			len(r.TalkSeconds), len(m.Levels), lastAt(r.TalkSeconds))
+	}
+	if r.SubtitleNote != "" {
+		fmt.Fprintf(stdout, "subtitles  %s\n", r.SubtitleNote)
+	}
+	sheet := filepath.Join(workdir, "contact-sheet.png")
+	picks, err := contactSheet(paths, sheet)
+	if err != nil {
+		return 0, err
+	}
+	shown := make([]string, len(picks))
+	for i, p := range picks {
+		shown[i] = fmt.Sprintf("%ds", p)
+	}
+	fmt.Fprintf(stdout, "sheet      %s\n           sampled at %s\n", sheet, strings.Join(shown, ", "))
 	return finish(r, workdir, stdout)
+}
+
+func lastAt(seconds []int) string {
+	if len(seconds) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("; last at %ds", seconds[len(seconds)-1])
 }
 
 // finish prints warnings and failures, writes check.json, and picks the exit code.
