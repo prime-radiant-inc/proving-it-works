@@ -70,6 +70,25 @@ scenes:
 	}
 }
 
+// An unnarrated build removes subtitles left beside the output by an earlier
+// narrated build, so a later standalone `movie check` never reads them.
+func TestUnnarratedBuildRemovesStaleSubtitles(t *testing.T) {
+	testmedia.Require(t, "ffmpeg", "ffprobe")
+	dir := t.TempDir()
+	still(t, dir, "red.png", "red")
+	still(t, dir, "blue.png", "blue")
+	writeFile(t, dir, "demo.srt", "1\n00:00:00,000 --> 00:00:04,000\nnarration from an older build\n")
+	writeFile(t, dir, "demo.yaml", "size: 320x180\nfps: 10\nscenes:\n"+
+		"  - id: first\n    image: red.png\n    duration: 2\n"+
+		"  - id: second\n    image: blue.png\n    duration: 2\n")
+	if r := runMovie(t, dir, "build", "demo.yaml", "demo.mp4"); r.code != 0 {
+		t.Fatalf("code %d\n%s%s", r.code, r.stdout, r.stderr)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "demo.srt")); !os.IsNotExist(err) {
+		t.Fatalf("demo.srt from an older build is still beside the movie (stat: %v)", err)
+	}
+}
+
 // awkward is a directory name that breaks every naive ffmpeg path handling.
 const awkward = "awk %d [x] 'q' λ & more"
 

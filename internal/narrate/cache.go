@@ -10,7 +10,9 @@ import (
 	"strings"
 )
 
-// RejectedError means every attempt at a clip failed its gate or synthesis.
+// RejectedError means every attempt at a clip failed, and at least one was
+// rejected by the openai-chat gate: the voice said something other than the
+// script. Attempts that all failed to synthesize are a plain error instead.
 type RejectedError struct{ Reasons []string }
 
 func (e *RejectedError) Error() string {
@@ -36,6 +38,8 @@ func Clip(dir string, e Engine, voice, text string, log io.Writer) (string, erro
 		return "", err
 	}
 	var reasons []string
+	var lastErr error
+	gated := false
 	for attempt := 1; attempt <= 2; attempt++ {
 		tmp, err := os.CreateTemp(dir, ".attempt-*.wav")
 		if err != nil {
@@ -46,11 +50,13 @@ func Clip(dir string, e Engine, voice, text string, log io.Writer) (string, erro
 		if err == nil && e.Name() == "openai-chat" {
 			if ok, why := ChatAccepts(text, transcript); !ok {
 				err = fmt.Errorf("%s; it said: %q", why, transcript)
+				gated = true
 			}
 		}
 		if err != nil {
 			os.Remove(tmp.Name())
 			reasons = append(reasons, fmt.Sprintf("attempt %d: %v", attempt, err))
+			lastErr = err
 			continue
 		}
 		if err := os.Rename(tmp.Name(), path); err != nil {
@@ -58,6 +64,9 @@ func Clip(dir string, e Engine, voice, text string, log io.Writer) (string, erro
 		}
 		fmt.Fprintf(log, "  rendered %s\n", path)
 		return path, nil
+	}
+	if !gated {
+		return "", fmt.Errorf("narration failed to synthesize: %w", lastErr)
 	}
 	return "", &RejectedError{Reasons: reasons}
 }

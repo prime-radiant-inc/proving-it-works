@@ -58,8 +58,14 @@ func Run(scenePath, out string, stdout io.Writer) (int, error) {
 		names = append(names, sc.ID+".mp4")
 	}
 	opts := check.Options{}
+	srtPath := strings.TrimSuffix(out, filepath.Ext(out)) + ".srt"
 	if !f.Narrated() {
 		if err := concat(scratch, names, out); err != nil {
+			return 0, err
+		}
+		// check reads <stem>.srt beside the movie: one left by an earlier
+		// narrated build would describe a movie that no longer exists.
+		if err := os.Remove(srtPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return 0, err
 		}
 	} else {
@@ -67,7 +73,6 @@ func Run(scenePath, out string, stdout io.Writer) (int, error) {
 		if err := concat(scratch, names, cut); err != nil {
 			return 0, err
 		}
-		srtPath := strings.TrimSuffix(out, filepath.Ext(out)) + ".srt"
 		speechEnd, err := writeSubtitles(srtPath, f, clips, offsets)
 		if err != nil {
 			return 0, err
