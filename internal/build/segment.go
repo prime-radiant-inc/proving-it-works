@@ -1,11 +1,13 @@
 package build
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"math"
 	"os"
 	"strconv"
+	"sync"
 
 	"github.com/prime-radiant-inc/proving-it-works/internal/ffmpeg"
 	"github.com/prime-radiant-inc/proving-it-works/internal/scene"
@@ -51,7 +53,9 @@ func encodeStill(scratch, name string, f *scene.File, pngs io.Reader, rate float
 // fileStream records a copying goroutine's error and provides Read and Close.
 type fileStream struct {
 	*io.PipeReader
-	done chan error
+	done      chan error
+	closeOnce sync.Once
+	closeErr  error
 }
 
 // streamFiles concatenates files onto one reader, opening one at a time.
@@ -78,18 +82,23 @@ func streamFiles(paths []string) *fileStream {
 		done <- nil
 		w.Close()
 	}()
-	return &fileStream{r, done}
+	return &fileStream{PipeReader: r, done: done}
 }
 
 // Close closes the pipe reader, waits for the copying goroutine, and returns
 // any file error (ignoring io.ErrClosedPipe, which means ffmpeg quit early).
+// Close is idempotent and may be called multiple times.
 func (fs *fileStream) Close() error {
-	fs.PipeReader.Close()
-	err := <-fs.done
-	// If the error is io.ErrClosedPipe, the pipe was closed (expected when ffmpeg
-	// quits early). Only report real file errors.
-	if err == io.ErrClosedPipe {
-		return nil
-	}
-	return err
+	fs.closeOnce.Do(func() {
+		fs.PipeReader.Close()
+		err := <-fs.done
+		// If the error is io.ErrClosedPipe, the pipe was closed (expected when ffmpeg
+		// quits early). Only report real file errors.
+		if errors.Is(err, io.ErrClosedPipe) {
+			fs.closeErr = nil
+		} else {
+			fs.closeErr = err
+		}
+	})
+	return fs.closeErr
 }
