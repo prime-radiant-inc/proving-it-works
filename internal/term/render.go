@@ -7,17 +7,17 @@ import (
 	"errors"
 	"fmt"
 	"image"
-	"image/color"
 	"image/draw"
 	"image/png"
 	"io"
 	"math"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"golang.org/x/image/font"
+	"golang.org/x/image/font/opentype"
+	"golang.org/x/image/font/sfnt"
 	"golang.org/x/image/math/fixed"
 
 	"github.com/prime-radiant-inc/proving-it-works/internal/fonts"
@@ -148,54 +148,116 @@ func Render(dir, outdir string, px image.Point, stdout io.Writer) error {
 		}
 		fmt.Fprintf(stdout, "%s: %d frames, %.1fs -> %s\n", name, len(slots), t.End-t.Start, takeDir)
 	}
+	r.warnMissing(stdout)
 	return nil
 }
 
-var (
-	foreground = color.RGBA{0xe8, 0xe6, 0xe1, 0xff}
-	backdrop   = color.RGBA{0x10, 0x10, 0x14, 0xff}
-	sgr        = regexp.MustCompile("\x1b\\[[0-9;:]*m")
-)
-
-// renderer draws snapshots as cols x rows cells filling 96% of the frame.
+// renderer draws snapshots cell by cell, cols x rows filling 96% of the frame.
 type renderer struct {
 	px                   image.Point
-	face                 font.Face
+	chain                []*opentype.Font
+	faces                []font.Face
 	cols, rows           int
 	cellW, cellH, ascent int
+	buf                  sfnt.Buffer
+	missing              []rune
+	seen                 map[rune]bool
 }
 
 func newRenderer(px image.Point, cols, rows int) *renderer {
-	probe := fonts.Face(fonts.Mono(), 100)
+	chain := fonts.MonoChain()
+	probe := fonts.Face(chain[0], 100)
 	adv, _ := probe.GlyphAdvance('M')
 	height := probe.Metrics().Height
 	size := math.Min(
 		float64(px.X)*0.96/(float64(cols)*float64(adv)/64/100),
 		float64(px.Y)*0.96/(float64(rows)*float64(height)/64/100))
-	face := fonts.Face(fonts.Mono(), size)
-	adv, _ = face.GlyphAdvance('M')
-	m := face.Metrics()
-	return &renderer{px: px, face: face, cols: cols, rows: rows,
-		cellW: adv.Ceil(), cellH: m.Height.Ceil(), ascent: m.Ascent.Ceil()}
+	r := &renderer{px: px, chain: chain, cols: cols, rows: rows, seen: map[rune]bool{}}
+	for _, f := range chain {
+		r.faces = append(r.faces, fonts.Face(f, size))
+	}
+	adv, _ = r.faces[0].GlyphAdvance('M')
+	m := r.faces[0].Metrics()
+	r.cellW, r.cellH, r.ascent = adv.Ceil(), m.Height.Ceil(), m.Ascent.Ceil()
+	return r
 }
 
-// draw renders one snapshot as plain text. Task 17 replaces this with cell
-// rendering that honours colours, wide characters, and the cursor.
 func (r *renderer) draw(e Entry) ([]byte, error) {
 	img := image.NewRGBA(image.Rect(0, 0, r.px.X, r.px.Y))
-	draw.Draw(img, img.Bounds(), image.NewUniform(backdrop), image.Point{}, draw.Src)
+	draw.Draw(img, img.Bounds(), image.NewUniform(defaultBG), image.Point{}, draw.Src)
 	ox, oy := (r.px.X-r.cols*r.cellW)/2, (r.px.Y-r.rows*r.cellH)/2
-	d := font.Drawer{Dst: img, Src: image.NewUniform(foreground), Face: r.face}
-	for y, line := range strings.Split(sgr.ReplaceAllString(e.Screen, ""), "\n") {
-		if y >= r.rows {
-			break
+	lines := strings.Split(e.Screen, "\n")
+	for y := 0; y < r.rows; y++ {
+		line := ""
+		if y < len(lines) {
+			line = lines[y]
 		}
-		d.Dot = fixed.P(ox, oy+y*r.cellH+r.ascent)
-		d.DrawString(line)
+		for x, c := range ParseLine(line, r.cols) {
+			if c.Skip {
+				continue
+			}
+			w := r.cellW
+			if c.Wide {
+				w *= 2
+			}
+			if e.Cursor && x == e.CursorX && y == e.CursorY {
+				c.Reverse = !c.Reverse
+			}
+			fg, bg := c.Colours()
+			cell := image.Rect(ox+x*r.cellW, oy+y*r.cellH, ox+x*r.cellW+w, oy+(y+1)*r.cellH)
+			draw.Draw(img, cell, image.NewUniform(bg), image.Point{}, draw.Src)
+			if c.Underline {
+				under := image.Rect(cell.Min.X, cell.Max.Y-2, cell.Max.X, cell.Max.Y-1)
+				draw.Draw(img, under, image.NewUniform(fg), image.Point{}, draw.Src)
+			}
+			if c.R == ' ' {
+				continue
+			}
+			i := fonts.Find(r.chain, c.R, &r.buf)
+			if i < 0 {
+				// a visible box, never a silent blank
+				r.note(c.R)
+				box := cell.Inset(max(1, r.cellW/6))
+				for _, edge := range []image.Rectangle{
+					{box.Min, image.Pt(box.Max.X, box.Min.Y+1)}, {image.Pt(box.Min.X, box.Max.Y-1), box.Max},
+					{box.Min, image.Pt(box.Min.X+1, box.Max.Y)}, {image.Pt(box.Max.X-1, box.Min.Y), box.Max},
+				} {
+					draw.Draw(img, edge, image.NewUniform(fg), image.Point{}, draw.Src)
+				}
+				continue
+			}
+			face := r.faces[i]
+			dot := fixed.P(cell.Min.X, cell.Min.Y+r.ascent)
+			if i > 0 {
+				// Fallback glyphs (notably Noto's ⏺) can be wider than a
+				// cell; centre them horizontally instead of letting them
+				// overflow into the next cell.
+				adv, _ := face.GlyphAdvance(c.R)
+				dot.X += (fixed.I(w) - adv) / 2
+			}
+			d := font.Drawer{Dst: img, Src: image.NewUniform(fg), Face: face, Dot: dot}
+			d.DrawString(string(c.R))
+		}
 	}
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, img); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+func (r *renderer) note(ch rune) {
+	if !r.seen[ch] {
+		r.seen[ch] = true
+		r.missing = append(r.missing, ch)
+	}
+}
+
+// warnMissing says which characters no font here can draw, so a box in a
+// frame is never a silent defect.
+func (r *renderer) warnMissing(stdout io.Writer) {
+	if len(r.missing) > 0 {
+		fmt.Fprintf(stdout, "WARN       no font here can draw %s; those cells show a box. "+
+			"Look at the frames before you use them.\n", fonts.Describe(r.missing))
+	}
 }

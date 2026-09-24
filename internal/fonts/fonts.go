@@ -19,9 +19,20 @@ var sansTTF []byte
 //go:embed DejaVuSansMono.ttf
 var monoTTF []byte
 
+//go:embed NotoSansSymbols2-Regular.ttf
+var notoSymbols2TTF []byte
+
+//go:embed NotoSansSymbols-Regular.ttf
+var notoSymbolsTTF []byte
+
 var (
 	sans = mustParse(sansTTF)
 	mono = mustParse(monoTTF)
+
+	// fallbacks is the fallback chain the term-spike findings chose, in
+	// order: Noto Sans Symbols 2 covers Claude Code's ⏺/⏵/⏸ and all of
+	// braille; Noto Sans Symbols covers ⎿, which Symbols 2 lacks.
+	fallbacks = []*opentype.Font{mustParse(notoSymbols2TTF), mustParse(notoSymbolsTTF)}
 )
 
 func mustParse(data []byte) *opentype.Font {
@@ -37,6 +48,10 @@ func Sans() *opentype.Font { return sans }
 
 // Mono is DejaVu Sans Mono, for terminals.
 func Mono() *opentype.Font { return mono }
+
+// MonoChain is DejaVu Sans Mono and then the fallbacks, in the order
+// renderers should try them.
+func MonoChain() []*opentype.Font { return append([]*opentype.Font{mono}, fallbacks...) }
 
 // SansTTF is the Sans font file, for handing to libass.
 func SansTTF() []byte { return sansTTF }
