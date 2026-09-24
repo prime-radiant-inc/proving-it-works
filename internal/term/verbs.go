@@ -66,7 +66,13 @@ func Start(dir string, o StartOptions, stdout io.Writer) (err error) {
 	if cwd != "" {
 		args = append(args, "-c", cwd)
 	}
-	args = append(args, shellCommand(s.History), ";",
+	var scrub []string
+	if len(o.Wrapper) == 0 {
+		// A wrapped session gets the container's own environment, which
+		// never carried the host's CLAUDE* variables to begin with.
+		scrub = claudeEnvNames(os.Environ())
+	}
+	args = append(args, shellCommand(s.History, scrub), ";",
 		"set-option", "-t", window, "status", "off", ";",
 		"set-option", "-t", window, "@movie_film", "on", ";",
 		"set-option", "-t", window, "@movie_sent", "0")
@@ -149,11 +155,51 @@ func (s *Session) send(text string, keys ...string) error {
 		return err
 	}
 	for _, k := range keys {
-		if _, err := s.tmux("send-keys", "-t", window, k); err != nil {
+		args, err := keyArgs(k)
+		if err != nil {
+			return err
+		}
+		if _, err := s.tmux(append([]string{"send-keys", "-t", window}, args...)...); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// TypeText types into whatever is running, with no prompt check.
+func TypeText(s *Session, text string) error { return s.send(text) }
+
+// PressKey presses one key.
+func PressKey(s *Session, name string) error {
+	if _, err := keyArgs(name); err != nil {
+		return err
+	}
+	return s.send("", name)
+}
+
+// Wait waits for the next prompt, or for quiet, or for timeout.
+func Wait(s *Session, timeout, quiet time.Duration, stdout io.Writer) (int, error) {
+	return s.await(timeout, quiet, stdout)
+}
+
+// Screen prints the screen as text.
+func Screen(s *Session, stdout io.Writer) error {
+	st, err := s.status(false)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(stdout, strings.TrimRight(st.Screen, "\n"))
+	return nil
+}
+
+// SetFilm turns filming on or off; each "on" after "off" starts a new take.
+func SetFilm(s *Session, on bool) error {
+	value := "off"
+	if on {
+		value = "on"
+	}
+	_, err := s.tmux("set-option", "-t", window, "@movie_film", value)
+	return err
 }
 
 // Outcome is what run and wait report, on one JSON line before the screen.

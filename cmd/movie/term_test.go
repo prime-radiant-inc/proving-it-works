@@ -31,6 +31,9 @@ func startSession(t *testing.T, dir string, args ...string) string {
 		var s struct{ Socket string }
 		if data, err := os.ReadFile(filepath.Join(session, "session.json")); err == nil && json.Unmarshal(data, &s) == nil {
 			exec.Command("tmux", "-S", s.Socket, "kill-server").Run()
+			// Stop already removes the socket for unwrapped sessions, but a
+			// test that never calls stop would otherwise leave it behind.
+			os.Remove(s.Socket)
 		}
 		// The recorder runs detached from tmux and only notices the server is
 		// gone on its next poll, then writes recorder.done and exits. Wait for
@@ -101,5 +104,127 @@ func TestTermRunReportsAFailingCommand(t *testing.T) {
 	r := runMovie(t, dir, "term", "run", session, "false")
 	if r.code != 1 || !strings.Contains(r.stdout, `"exit_code":1`) {
 		t.Fatalf("code %d\n%s%s", r.code, r.stdout, r.stderr)
+	}
+}
+
+func TestRunRefusesWhileACommandRunsAndWaitReportsItStillRunning(t *testing.T) {
+	dir := t.TempDir()
+	session := startSession(t, dir)
+	r := runMovie(t, dir, "term", "run", session, "sleep 3", "--timeout", "0.5")
+	if r.code != 3 || !strings.Contains(r.stdout, `"outcome":"running"`) {
+		t.Fatalf("run: code %d\n%s", r.code, r.stdout)
+	}
+	r = runMovie(t, dir, "term", "run", session, "echo too soon")
+	if r.code != 2 || !strings.Contains(r.stderr, "not at a prompt") {
+		t.Fatalf("second run: code %d\n%s", r.code, r.stderr)
+	}
+	r = runMovie(t, dir, "term", "wait", session, "--timeout", "10")
+	if r.code != 0 || !strings.Contains(r.stdout, `"outcome":"completed"`) {
+		t.Fatalf("wait: code %d\n%s", r.code, r.stdout)
+	}
+}
+
+func TestWaitQuietReturnsWhenATUIGoesStill(t *testing.T) {
+	dir := t.TempDir()
+	session := startSession(t, dir)
+	if r := runMovie(t, dir, "term", "type", session, "cat"); r.code != 0 {
+		t.Fatalf("type: %d %s", r.code, r.stderr)
+	}
+	if r := runMovie(t, dir, "term", "key", session, "Enter"); r.code != 0 {
+		t.Fatalf("key: %d %s", r.code, r.stderr)
+	}
+	r := runMovie(t, dir, "term", "wait", session, "--quiet", "1", "--timeout", "10")
+	if r.code != 3 || !strings.Contains(r.stdout, `"outcome":"quiet"`) {
+		t.Fatalf("wait --quiet: code %d\n%s", r.code, r.stdout)
+	}
+	runMovie(t, dir, "term", "key", session, "C-c")
+	if r := runMovie(t, dir, "term", "wait", session); r.code != 1 && r.code != 0 {
+		t.Fatalf("after C-c: code %d\n%s", r.code, r.stdout)
+	}
+}
+
+func TestScreenShowsText(t *testing.T) {
+	dir := t.TempDir()
+	session := startSession(t, dir)
+	runMovie(t, dir, "term", "run", session, "echo 'semi;colon -dash λ'")
+	r := runMovie(t, dir, "term", "screen", session)
+	if r.code != 0 || !strings.Contains(r.stdout, "semi;colon -dash λ") {
+		t.Fatalf("screen: code %d\n%s", r.code, r.stdout)
+	}
+}
+
+func TestFilmOffSplitsTakes(t *testing.T) {
+	dir := t.TempDir()
+	session := startSession(t, dir)
+	runMovie(t, dir, "term", "run", session, "echo one")
+	runMovie(t, dir, "term", "film", session, "off")
+	runMovie(t, dir, "term", "run", session, "echo off camera")
+	runMovie(t, dir, "term", "film", session, "on")
+	runMovie(t, dir, "term", "run", session, "echo two")
+	takes := filepath.Join(dir, "takes")
+	if r := runMovie(t, dir, "term", "stop", session, takes); r.code != 0 {
+		t.Fatalf("stop: %s", r.stderr)
+	}
+	for _, take := range []string{"take-1", "take-2"} {
+		if _, err := os.Stat(filepath.Join(takes, take, "take.json")); err != nil {
+			t.Errorf("%s missing: %v", take, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(takes, "take-3")); err == nil {
+		t.Error("a third take appeared")
+	}
+}
+
+func TestRenderWorksAfterTheSessionIsGoneAndRefusesAUsedDirectory(t *testing.T) {
+	dir := t.TempDir()
+	session := startSession(t, dir)
+	runMovie(t, dir, "term", "run", session, "echo hi")
+	if r := runMovie(t, dir, "term", "stop", session, filepath.Join(dir, "a")); r.code != 0 {
+		t.Fatal(r.stderr)
+	}
+	if r := runMovie(t, dir, "term", "render", session, filepath.Join(dir, "b"), "--px", "800x450"); r.code != 0 {
+		t.Fatalf("render: %s", r.stderr)
+	}
+	if r := runMovie(t, dir, "term", "render", session, filepath.Join(dir, "b")); r.code != 2 || !strings.Contains(r.stderr, "not empty") {
+		t.Fatalf("reuse: code %d %s", r.code, r.stderr)
+	}
+	if r := runMovie(t, dir, "term", "start", session); r.code != 2 || !strings.Contains(r.stderr, "not empty") {
+		t.Fatalf("restart: code %d %s", r.code, r.stderr)
+	}
+}
+
+func TestTheUsersHistoryIsNeverReadOrWritten(t *testing.T) {
+	home := t.TempDir()
+	secret := filepath.Join(home, ".bash_history")
+	os.WriteFile(secret, []byte("export SECRET_TOKEN=hunter2\n"), 0o600)
+	t.Setenv("HOME", home)
+	dir := t.TempDir()
+	session := startSession(t, dir)
+	runMovie(t, dir, "term", "run", session, "echo filmed")
+	runMovie(t, dir, "term", "key", session, "Up")
+	r := runMovie(t, dir, "term", "screen", session)
+	if strings.Contains(r.stdout, "hunter2") {
+		t.Fatal("the user's history reached the screen")
+	}
+	data, _ := os.ReadFile(secret)
+	if strings.Contains(string(data), "echo filmed") {
+		t.Fatal("the session wrote the user's history")
+	}
+}
+
+// TestFilmedShellNeverInheritsAgentVariables applies the controller ruling
+// that no variable whose name starts with CLAUDE reaches the filmed shell:
+// a nested Claude Code warns about inherited session markers, and a filmed
+// `env` would otherwise print a live token on camera. The command greps for
+// the one variable, rather than dumping the whole environment, because the
+// test session's pane is only 10 rows and a plain `env` scrolls it off
+// screen regardless of whether it leaked.
+func TestFilmedShellNeverInheritsAgentVariables(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_TEST_TOKEN", "secret-token-xyz")
+	dir := t.TempDir()
+	session := startSession(t, dir)
+	r := runMovie(t, dir, "term", "run", session, "env | grep CLAUDE_CODE_TEST_TOKEN")
+	if strings.Contains(r.stdout, "secret-token-xyz") {
+		t.Fatalf("the filmed shell's env leaked CLAUDE_CODE_TEST_TOKEN:\n%s", r.stdout)
 	}
 }

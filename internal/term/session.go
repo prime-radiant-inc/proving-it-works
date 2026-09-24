@@ -96,19 +96,45 @@ func quote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + 
 // unexports itself so a nested bash does not report prompts of its own.
 const prompt = `s=$?; export -n PROMPT_COMMAND; MOVIE_N=$((MOVIE_N+1)); printf '\033]2;MOVIE;%s;%s\007' "$MOVIE_N" "$s"`
 
+// claudeEnvNames returns, from environ (as os.Environ returns it), the names
+// of every variable whose name starts with CLAUDE. These are the invoking
+// agent's own variables (CLAUDECODE, CLAUDE_CODE_*, CLAUDE_PID, ...); the
+// filmed shell must never inherit them, or a nested Claude Code warns about
+// them on camera, or a filmed `env` prints a live token.
+func claudeEnvNames(environ []string) []string {
+	var names []string
+	for _, kv := range environ {
+		name, _, _ := strings.Cut(kv, "=")
+		if strings.HasPrefix(name, "CLAUDE") {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
 // shellCommand starts a clean bash: no startup files, its own history file,
-// no macOS "default shell is now zsh" banner, and none of the variables that
-// leak the invoking terminal or the Git Bash launcher into the take.
-func shellCommand(history string) string {
-	return strings.Join([]string{
+// no macOS "default shell is now zsh" banner, a UTF-8 locale (the default C
+// locale corrupts typed multibyte text), and none of the variables that leak
+// the invoking terminal, the Git Bash launcher, or the invoking agent
+// (scrub) into the take.
+func shellCommand(history string, scrub []string) string {
+	parts := []string{
 		"exec env",
 		"-u TERM_PROGRAM -u TERM_PROGRAM_VERSION -u TERM_SESSION_ID -u TMUX",
 		"-u MSYS_NO_PATHCONV -u MSYS2_ARG_CONV_EXCL",
+		"-u LC_ALL -u LC_CTYPE",
+	}
+	for _, name := range scrub {
+		parts = append(parts, "-u "+name)
+	}
+	parts = append(parts,
+		"LANG=C.UTF-8",
 		"TERM=xterm-256color",
 		"BASH_SILENCE_DEPRECATION_WARNING=1",
-		"HISTFILE=" + quote(history),
-		"PS1=" + quote(`\w \$ `),
-		"PROMPT_COMMAND=" + quote(prompt),
+		"HISTFILE="+quote(history),
+		"PS1="+quote(`\w \$ `),
+		"PROMPT_COMMAND="+quote(prompt),
 		"bash --noprofile --norc -i",
-	}, " ")
+	)
+	return strings.Join(parts, " ")
 }

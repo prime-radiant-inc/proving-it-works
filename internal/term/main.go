@@ -16,6 +16,11 @@ const usage = `usage: movie term VERB SESSION ...
 
   start SESSION [--cwd DIR] [--size 120x34] [-- WRAPPER...]
   run SESSION 'cmd' [--timeout 60]
+  type SESSION 'text'
+  key SESSION Enter|Escape|Tab|Up|Down|Left|Right|C-c|<one character>
+  wait SESSION [--quiet S] [--timeout 60]
+  screen SESSION
+  film SESSION on|off
   stop SESSION OUTDIR [--px 1600x900]
   render SESSION OUTDIR [--px 1600x900]
 `
@@ -69,6 +74,47 @@ func dispatch(verb string, args []string, stdout, stderr io.Writer) (int, error)
 			return exitcode.Usage, err
 		}
 		return RunCommand(s, pos[1], seconds(*timeout), stdout)
+	case "type", "key", "film":
+		pos, err := cli.Parse(fs, args)
+		if err != nil || len(pos) != 2 {
+			return exitcode.Usage, fmt.Errorf("needs SESSION and one argument")
+		}
+		s, err := Load(pos[0])
+		if err != nil {
+			return exitcode.Usage, err
+		}
+		switch verb {
+		case "type":
+			return exitcode.OK, TypeText(s, pos[1])
+		case "key":
+			return exitcode.OK, PressKey(s, pos[1])
+		}
+		if pos[1] != "on" && pos[1] != "off" {
+			return exitcode.Usage, fmt.Errorf("film takes on or off")
+		}
+		return exitcode.OK, SetFilm(s, pos[1] == "on")
+	case "wait":
+		timeout := fs.Float64("timeout", 60, "seconds to wait")
+		quiet := fs.Float64("quiet", 0, "return once the screen is unchanged this many seconds")
+		pos, err := cli.Parse(fs, args)
+		if err != nil || len(pos) != 1 {
+			return exitcode.Usage, fmt.Errorf("needs SESSION")
+		}
+		s, err := Load(pos[0])
+		if err != nil {
+			return exitcode.Usage, err
+		}
+		return Wait(s, seconds(*timeout), seconds(*quiet), stdout)
+	case "screen":
+		pos, err := cli.Parse(fs, args)
+		if err != nil || len(pos) != 1 {
+			return exitcode.Usage, fmt.Errorf("needs SESSION")
+		}
+		s, err := Load(pos[0])
+		if err != nil {
+			return exitcode.Usage, err
+		}
+		return exitcode.OK, Screen(s, stdout)
 	case "stop", "render":
 		px := fs.String("px", "1600x900", "frame size in pixels")
 		pos, err := cli.Parse(fs, args)
