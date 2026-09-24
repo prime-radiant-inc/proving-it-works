@@ -228,3 +228,14 @@ func TestFilmedShellNeverInheritsAgentVariables(t *testing.T) {
 		t.Fatalf("the filmed shell's env leaked CLAUDE_CODE_TEST_TOKEN:\n%s", r.stdout)
 	}
 }
+
+// A pass-through wrapper stands in for docker exec: every tmux call goes
+// through it, and the prompt still installs.
+func TestWrappedSessionRunsThroughTheWrapper(t *testing.T) {
+	dir := t.TempDir()
+	session := startSession(t, dir, "--", "env", "MOVIE_WRAPPED=yes")
+	r := runMovie(t, dir, "term", "run", session, "echo wrapped:$MOVIE_WRAPPED")
+	if r.code != 0 || !strings.Contains(r.stdout, "wrapped:yes") {
+		t.Fatalf("code %d\n%s%s", r.code, r.stdout, r.stderr)
+	}
+}

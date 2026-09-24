@@ -6,8 +6,8 @@ scenes:
     duration: 4
 
   - id: install
-    frames: install
-    rate: 2.6
+    frames: install/take-1
+    rate: 10
     narration: >-
       This is a container with nothing of ours in it. Claude Code is here,
       and no plugins. We add the marketplace straight from the public repo,
@@ -15,8 +15,8 @@ scenes:
       point one, enabled.
 
   - id: agent
-    frames: agent
-    rate: 5.0
+    frames: agent/take-1
+    rate: 10
     narration: >-
       Now the real test. We ask Claude, inside that container, to use the
       skill it just installed. Record the real page in motion with a cursor
@@ -40,8 +40,8 @@ scenes:
     movie: work/out/counter.mp4
 
   - id: verify
-    frames: verify
-    rate: 2.4
+    frames: verify/take-1
+    rate: 10
     narration: >-
       And here is the skill's own checker, run against it. The picture
       reaches new states at the right cadence, the narration is there, and

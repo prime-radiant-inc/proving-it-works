@@ -14,30 +14,17 @@ runs unattended.
 
 | File | What it is |
 |---|---|
-| `Dockerfile` | Debian + Node + Claude Code + ffmpeg + chromium + tmux/ttyd + mpv, and a pre-cached Piper voice so the container can narrate with no API key |
+| `Dockerfile` | Debian + Node + Claude Code + ffmpeg + chromium + tmux + mpv, and a pre-cached Piper voice so the container can narrate with no API key |
 | `app/index.html` | the subject: a counter that increments on click |
 | `scenes.yaml` | the demo's own scene script, assembled with `movie build` |
-| `../film-terminal.py` | drives the container's tmux session and screenshots it (see `recording-a-terminal.md`) |
+| `film.sh` | films the container's terminal from the host with `movie term`, through `docker exec` |
 
 ## Running it
 
 ```bash
 docker build -t proving-e2e .
-docker run -d --name provdemo -e CLAUDE_CODE_OAUTH_TOKEN \
-  -v "$PWD/work:/work" -p 7100:7681 proving-e2e bash -lc \
-  'tmux new-session -d -s demo -x 125 -y 34
-   exec ttyd -p 7681 -t fontSize=17 -t "fontFamily=DejaVu Sans Mono,monospace" \
-        tmux attach -t demo'
-
-./../film-terminal.py install http://127.0.0.1:7100/ provdemo
-./../film-terminal.py agent   http://127.0.0.1:7100/ provdemo   # starts the agent
-# wait for the shell to come back, then:
-./../film-terminal.py verify  http://127.0.0.1:7100/ provdemo
-```
-
-Then narrate, assemble, subtitle, and gate it with the skill's own tool:
-
-```bash
+docker run -d --name provdemo -e CLAUDE_CODE_OAUTH_TOKEN -v "$PWD/work:/work" proving-e2e sleep infinity
+./film.sh provdemo
 ../../skills/proving-it-works-with-a-movie/bin/movie build scenes.yaml demo.mp4
 ```
 
@@ -45,8 +32,6 @@ Then narrate, assemble, subtitle, and gate it with the skill's own tool:
 
 Every one of these was a silent failure — no error, just a wrong movie:
 
-- Headless Chrome renders ttyd's canvas blank without software GL. 73 blank
-  frames before anyone noticed; there is a preflight for it now.
 - Keystrokes sent while the agent was still running went into *its* stdin
   and were echoed as text, producing a take of commands that never ran.
 - The agent's first movie crammed every visible change into three seconds

@@ -8,14 +8,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       fonts-dejavu-core chromium \
     && rm -rf /var/lib/apt/lists/*
 
-# ttyd isn't packaged for bookworm; serves the tmux session over HTTP so the
-# terminal can be filmed as real pixels from outside the container
-RUN arch="$(dpkg --print-architecture)" \
-    && case "$arch" in arm64) t=aarch64 ;; amd64) t=x86_64 ;; *) echo "arch $arch" >&2; exit 1 ;; esac \
-    && curl -fsSL -o /usr/local/bin/ttyd \
-       "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.${t}" \
-    && chmod +x /usr/local/bin/ttyd && ttyd --version
-
 # uv: installs the piper CLI for the keyless voice
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:${PATH}"
