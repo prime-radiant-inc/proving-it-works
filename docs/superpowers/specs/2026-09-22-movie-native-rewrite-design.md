@@ -394,6 +394,45 @@ narration, waiting-time compression, and the scene file are shared with
 while the page holds still is cut to 1.5 s, time the app spends working is
 never cut, and each take holds its final picture at least 1.5 s.
 
+## `desk`
+
+`movie desk` films a desktop app on an X11 display the way `browse` films a
+web page: the agent looks (`shot`), acts with real pointer and key input,
+and narrates with `--say`; a detached recorder films the screen. Linux and
+X11 only for now: moving the real pointer on macOS needs native code the
+static release build cannot carry.
+
+| Verb | Does | Exit |
+|---|---|---|
+| `start SESSION [--display :99] [--window NAME] [--title T] [--subtitle S] [-- WRAPPER...]` | film the display, or one window's area; returns once filming | 0, or 2 |
+| `shot SESSION [PNG]` | save what is filmed now, print its path and the pointer position | 0 |
+| `move SESSION X Y` | glide the pointer to X,Y | 0 |
+| `click SESSION X Y [--right] [--double]` | glide there and click | 0 |
+| `drag SESSION X1 Y1 X2 Y2` | press at X1,Y1, glide to X2,Y2, release | 0 |
+| `key SESSION KEY...` | press keys, xdotool names (`ctrl+s`, `Return`, `shift+a`) | 0 |
+| `type SESSION 'text'` | type at human pace | 0 |
+| `wait SESSION [--quiet 1] [--timeout 60]` | wait until the picture holds still for `--quiet` seconds | 0, 1 timed out |
+| `cut`, `film`, `stop SESSION OUTDIR`, `render SESSION OUTDIR` | as in `browse` | 0 |
+
+Every action takes `--say`, as in `browse`. Coordinates are pixels of what
+is filmed, so a point read off a `shot` is the point to click; with
+`--window` they are relative to the window. The app is the agent's to
+start (on the display, in the container); `desk` films and drives it.
+
+**Hands** are one `xdotool` process per action, its commands chained: a
+glide is 15 moves 25 ms apart, and a click hovers 200 ms, then holds the
+button 120 ms, because apps (Blender) drop a click that arrives with the
+pointer or is released at once. **The camera** is `ffmpeg -f x11grab
+-draw_mouse 1` at 10 fps writing PNGs to stdout (`image2pipe`,
+`-flush_packets 1`); the recorder splits the stream at each PNG's `IEND`,
+stamps each picture when it arrives, and puts it on a `film.Reel`, which
+drops repeats. Both run through the wrapper, so with `-- docker exec
+CONTAINER` the display, app, xdotool, and ffmpeg live in the container and
+the recording on the host. **Settling** reads the recorder's own log: an
+action is over once no new picture has arrived for 400 ms since it ended,
+at most 5 s. Takes, marks, beats, and rendering are `film.Set` and
+`film.RenderPictures`, shared with `browse`.
+
 ## Instructions in the skill
 
 These routes get clear instructions and snippets instead of code, each
