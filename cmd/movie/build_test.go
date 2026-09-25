@@ -304,3 +304,33 @@ func parseTimestamp(t *testing.T, ts string) float64 {
 	}
 	return float64(h*3600+m*60+s) + float64(ms)/1000
 }
+
+// A take's narration_at: end narration never starts before the take's result
+// appears (take.json's settled time); the result is held while it plays.
+func TestNarrationWaitsForTheTakesResult(t *testing.T) {
+	requirePiper(t)
+	dir := t.TempDir()
+	for i := range 8 {
+		still(t, dir, fmt.Sprintf("take/f%02d.png", i), []string{"red", "green", "blue", "white", "black", "yellow", "cyan", "gray"}[i])
+	}
+	writeFile(t, dir, "take/take.json", `{"frames": "unused", "rate": 1, "settled": 7}`)
+	writeFile(t, dir, "demo.yaml", `size: 320x180
+fps: 10
+engine: piper
+scenes:
+  - id: take
+    frames: take
+    narration: And there is the result.
+    narration_at: end
+`)
+	r := runMovie(t, dir, "build", "demo.yaml", "demo.mp4")
+	if r.code != 0 {
+		t.Fatalf("code %d\n%s%s", r.code, r.stdout, r.stderr)
+	}
+	clips, _ := filepath.Glob(filepath.Join(dir, "demo.build", "narration", "*.wav"))
+	speech := testmedia.Duration(t, clips[0])
+	data, _ := os.ReadFile(filepath.Join(dir, "demo.srt"))
+	first := strings.SplitN(strings.Split(string(data), "\n")[1], " --> ", 2)[0]
+	assertNear(t, "narration start", parseTimestamp(t, first), 7, 0.1)
+	assertNear(t, "movie length", testmedia.Duration(t, filepath.Join(dir, "demo.mp4")), 7+speech, 0.2)
+}

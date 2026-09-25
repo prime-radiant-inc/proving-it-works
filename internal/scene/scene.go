@@ -58,6 +58,9 @@ type Scene struct {
 	// NarrationAtEnd delays the narration so it ends as the scene ends, where
 	// a terminal take shows its result, instead of starting with the scene.
 	NarrationAtEnd bool
+	// Settled is, for a `movie term` take, how many seconds in its screen
+	// settled on the result; narration_at: end never starts before it.
+	Settled float64
 }
 
 // Problems lists everything wrong with a scene file.
@@ -242,10 +245,10 @@ func parseScene(f *File, index int, item any) (Scene, Problems) {
 		}
 		rate := float64(f.FPS)
 		if sc.Source != "" {
-			if takeRate, err := takeJSONRate(sc.Source); err != nil {
+			if take, err := readTake(sc.Source); err != nil {
 				p = append(p, fmt.Sprintf("%s: %v", name, err))
-			} else if takeRate > 0 {
-				rate = takeRate
+			} else if take.Rate > 0 {
+				rate, sc.Settled = take.Rate, take.Settled
 			}
 		}
 		sc.Rate = positive("rate", rate)
@@ -271,23 +274,27 @@ func parseScene(f *File, index int, item any) (Scene, Problems) {
 	return sc, p
 }
 
-// takeJSONRate reads the frame rate `movie term` records in a take
-// directory's take.json. It returns 0 when there is no take.json.
-func takeJSONRate(dir string) (float64, error) {
+// take is what `movie term` records about a take in its take.json.
+type take struct {
+	Rate    float64 `json:"rate"`
+	Settled float64 `json:"settled"`
+}
+
+// readTake reads a take directory's take.json. It returns a zero take when
+// there is no take.json.
+func readTake(dir string) (take, error) {
+	var t take
 	data, err := os.ReadFile(filepath.Join(dir, "take.json"))
 	if errors.Is(err, os.ErrNotExist) {
-		return 0, nil
+		return t, nil
 	}
 	if err != nil {
-		return 0, err
+		return t, err
 	}
-	var take struct {
-		Rate float64 `json:"rate"`
+	if err := json.Unmarshal(data, &t); err != nil || !(t.Rate > 0) || t.Settled < 0 {
+		return take{}, fmt.Errorf("unreadable take.json in %s: it needs a positive rate", dir)
 	}
-	if err := json.Unmarshal(data, &take); err != nil || !(take.Rate > 0) {
-		return 0, fmt.Errorf("unreadable take.json in %s: it needs a positive rate", dir)
-	}
-	return take.Rate, nil
+	return t, nil
 }
 
 // PNGs lists the PNG files in dir in lexical order. It reads the directory

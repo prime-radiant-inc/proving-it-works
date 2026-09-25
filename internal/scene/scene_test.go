@@ -161,3 +161,15 @@ func TestNarrationAtEndIsParsedAndValidated(t *testing.T) {
 		}
 	}
 }
+
+func TestFramesSceneReadsWhenTheTakeSettled(t *testing.T) {
+	path := fixture(t, "scenes:\n  - id: take\n    frames: frames\n")
+	os.WriteFile(filepath.Join(filepath.Dir(path), "frames", "take.json"), []byte(`{"rate": 10, "settled": 2.5}`), 0o644)
+	f, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Scenes[0].Settled != 2.5 {
+		t.Fatalf("settled %v, want 2.5", f.Scenes[0].Settled)
+	}
+}

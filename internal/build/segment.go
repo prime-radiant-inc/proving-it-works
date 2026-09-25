@@ -110,13 +110,16 @@ func (fs *fileStream) Close() error {
 	return fs.closeErr
 }
 
-// narrationDelay is how far into a scene its narration starts: zero, or,
-// with narration_at: end, enough that it ends as the scene ends.
-func narrationDelay(scene, speech float64, atEnd bool) float64 {
-	if !atEnd {
-		return 0
+// narrationPlacement is how far into a scene its narration starts and how
+// long the scene lasts. Narration starts with the scene; with
+// narration_at: end it ends as the visuals end, but never starts before
+// settled, where a terminal take's result appears. When it would run past
+// the visuals, the last frame (the result) is held until it finishes.
+func narrationPlacement(visual, speech, settled float64, atEnd bool) (delay, length float64) {
+	if atEnd {
+		delay = math.Max(0, math.Max(visual-speech, settled))
 	}
-	return math.Max(0, scene-speech)
+	return delay, math.Max(visual, delay+speech)
 }
 
 // segment encodes one scene into scratch/<id>.mp4 and returns its measured
@@ -132,24 +135,24 @@ func segment(scratch string, f *scene.File, sc scene.Scene, wav string, speech f
 		err = encodeMovie(scratch, name, f, sc.Source)
 	case scene.Frames:
 		frames := scene.PNGs(sc.Source)
-		target := max(speech, float64(len(frames))/sc.Rate)
-		delay = narrationDelay(target, speech, sc.NarrationAtEnd)
+		var target float64
+		delay, target = narrationPlacement(float64(len(frames))/sc.Rate, speech, sc.Settled, sc.NarrationAtEnd)
 		pngs := streamFiles(frames)
 		err = encodeStill(scratch, name, f, pngs, sc.Rate, len(frames), target, wav, delay)
 		if cerr := pngs.Close(); cerr != nil {
 			err = cerr
 		}
 	case scene.Image:
-		target := max(speech, sc.Duration)
-		delay = narrationDelay(target, speech, sc.NarrationAtEnd)
+		var target float64
+		delay, target = narrationPlacement(sc.Duration, speech, 0, sc.NarrationAtEnd)
 		pngs := streamFiles([]string{sc.Source})
 		err = encodeStill(scratch, name, f, pngs, float64(f.FPS), 1, target, wav, delay)
 		if cerr := pngs.Close(); cerr != nil {
 			err = cerr
 		}
 	case scene.Card:
-		target := max(speech, sc.Duration)
-		delay = narrationDelay(target, speech, sc.NarrationAtEnd)
+		var target float64
+		delay, target = narrationPlacement(sc.Duration, speech, 0, sc.NarrationAtEnd)
 		var png []byte
 		if png, err = Card(sc.Title, sc.Subtitle, f.Width, f.Height); err == nil {
 			err = encodeStill(scratch, name, f, bytes.NewReader(png), float64(f.FPS), 1, target, wav, delay)

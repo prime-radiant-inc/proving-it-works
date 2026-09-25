@@ -30,10 +30,16 @@ each command you will narrate: each command becomes its own take, its own
 scene, and its own sentence, and each take ends holding its result on
 screen for 1.5 seconds.
 
-Keep `narration_at: end` on each take's scene: the narration then finishes
-as the take does, over the result, instead of starting while the command is
-still being typed. Write each sentence about what the beat proves ("the
+Keep `narration_at: end` on each take's scene: the narration then plays
+over the result instead of starting while the command is still being typed.
+It never starts before the result appears (the take records when its screen
+settled), and if it runs longer than the take, the result stays on screen
+until it finishes. Write each sentence about what the beat proves ("the
 tests pass"), not a play-by-play of the typing.
+
+Time the shell spends waiting at a prompt for your next command is cut from
+the take to 1.5 seconds, so pausing to think between commands never puts
+dead air in the movie.
 
 ## The verbs
 
@@ -59,8 +65,9 @@ output directories must be new or empty.
 An agent run or a build takes minutes. Film the command being issued, then
 `film off`, `wait` for it, `film on`, and film the result: the movie cuts
 from the command to its result, and a card in the scene file can say how
-long it took. The work is real; the tedium is not. Time inside a take is
-never compressed.
+long it took. The work is real; the tedium is not. Time a command spends
+running is never compressed; only time spent waiting at a prompt for the
+next command is.
 
 `film off` films the screen as it stands and holds it for 1.5 seconds
 before the take ends, as `stop` does, so the result of the last `run` is
