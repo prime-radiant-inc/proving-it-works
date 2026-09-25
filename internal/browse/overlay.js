@@ -77,12 +77,13 @@
       requestAnimationFrame(step);
     });
 
-  // pulse draws a ring expanding from the cursor's tip: the click.
+  // pulse draws a ring expanding from the cursor's tip (3, 2 within the
+  // cursor): the click.
   const pulse = () => {
     if (!pos) return;
     const ring = document.createElement("div");
     ring.style.cssText =
-      `position:fixed;left:${pos.x - 18}px;top:${pos.y - 18}px;width:36px;height:36px;` +
+      "position:absolute;left:-15px;top:-16px;width:36px;height:36px;" +
       "border-radius:50%;border:3px solid rgba(255,196,0,0.95);box-sizing:border-box;" +
       "z-index:2147483646;pointer-events:none";
     ensureCursor().appendChild(ring);
@@ -111,9 +112,10 @@
 
   // names are the texts a person would call an element by.
   const names = (el) => {
-    const out = [el.innerText, el.getAttribute("aria-label"), el.getAttribute("placeholder"), el.getAttribute("title")];
-    if (el.tagName === "INPUT" && /^(button|submit|reset)$/i.test(el.type)) out.push(el.value);
+    const out = [el.innerText, el.getAttribute("aria-label")];
     if (el.labels) for (const l of el.labels) out.push(l.innerText);
+    out.push(el.getAttribute("placeholder"), el.getAttribute("title"));
+    if (el.tagName === "INPUT" && /^(button|submit|reset)$/i.test(el.type)) out.push(el.value);
     return out.map(norm).filter(Boolean);
   };
 
@@ -143,6 +145,22 @@
       throw new Error(`${target} is neither a CSS selector nor text=Label`);
     }
     return els.find(visible) || null;
+  };
+
+  // scrollTo scrolls el to the middle of the viewport, smoothly, as a
+  // person would, unless it is already in full view.
+  const scrollTo = (el) => {
+    const r = el.getBoundingClientRect();
+    if (r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth) return Promise.resolve();
+    return new Promise((resolve) => {
+      const done = () => {
+        removeEventListener("scrollend", done);
+        resolve();
+      };
+      addEventListener("scrollend", done);
+      setTimeout(done, 1500); // a scroll with nowhere to go never ends
+      el.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
+    });
   };
 
   const describe = (el) => {
@@ -176,10 +194,10 @@
 
     // point scrolls the target into view and returns the point to click,
     // or why there is none.
-    point: (target) => {
+    point: async (target) => {
       const el = find(target);
       if (!el) return { error: "missing" };
-      el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+      await scrollTo(el);
       const r = el.getBoundingClientRect();
       const x = Math.min(Math.max(r.left + r.width / 2, 1), innerWidth - 2);
       const y = Math.min(Math.max(r.top + r.height / 2, 1), innerHeight - 2);

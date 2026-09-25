@@ -171,11 +171,11 @@ func hasContent(path string) bool {
 	return err == nil && info.Size() > 0
 }
 
-// LoadFailed is a navigation the browser could not complete, such as a
-// refused connection: the app's failure, not the tool's.
-type LoadFailed struct{ URL, Reason string }
-
-func (e LoadFailed) Error() string { return fmt.Sprintf("could not load %s: %s", e.URL, e.Reason) }
+// loadFailed is the failure for a URL the browser could not load, such as
+// one whose server refused the connection: the app's failure, not the tool's.
+func loadFailed(url, reason string) error {
+	return Failed{fmt.Sprintf("could not load %s: %s", url, reason)}
+}
 
 // navigate loads url and waits for it to load and settle.
 func (p *page) navigate(url string) error {
@@ -199,12 +199,12 @@ func (p *page) navigate(url string) error {
 		return err
 	}
 	if got.ErrorText != "" {
-		return LoadFailed{url, got.ErrorText}
+		return loadFailed(url, got.ErrorText)
 	}
 	select {
 	case <-loaded:
 	case <-time.After(callTimeout):
-		return LoadFailed{url, "it did not finish loading within 30 s"}
+		return loadFailed(url, "it did not finish loading within 30 s")
 	}
 	return p.settle()
 }
