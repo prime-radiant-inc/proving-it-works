@@ -35,7 +35,8 @@ because `uv` shebangs do not run on Windows.
 | Scene file | New format, no backward compatibility. |
 | Terminal | tmux holds the session; `movie term` drives it, records styled snapshots, and renders frames. macOS, Linux, and WSL; no native Windows terminal filming. |
 | Browser apps | `movie browse` drives headless Chrome through a small CDP client, draws the cursor, and films the screencast, the same shape as `term`. Playwright stays in the skill as the escape hatch. |
-| Desktop capture, log reels, stills | Instructions in the skill, not code. |
+| Desktop apps | `movie desk` on Linux/X11: xdotool for input, ffmpeg x11grab for the picture, the same shape as `browse`. macOS and Windows desktop capture stay instructions. |
+| Log reels, stills | Instructions in the skill, not code. |
 
 ## Commands
 
@@ -45,6 +46,7 @@ because `uv` shebangs do not run on Windows.
 | `movie check MOVIE` | the gate, on any movie | all |
 | `movie term start / run / type / key / wait / screen / film / stop / render` | drive a terminal session and render it into frames | macOS, Linux, WSL |
 | `movie browse start / goto / click / type / choose / press / wait / page / cut / film / stop / render` | drive a web app in headless Chrome and render it into frames | macOS, Linux, WSL |
+| `movie desk start / shot / move / click / drag / key / type / wait / cut / film / stop / render` | drive a desktop app on X11 and render it into frames | Linux/X11, or X11 in a container |
 
 Exit codes: 0 success; 1 negative verdict (not shippable, narration
 rejected, a filmed command failed); 2 usage or environment error (including
@@ -96,7 +98,8 @@ the container too, when filming one). For the keyless voice, Piper
 (`uv tool install piper-tts`) and a voice (`uvx --from piper-tts python -m
 piper.download_voices --data-dir DIR VOICE`). The tool never installs
 anything, and a missing prerequisite is an error naming the command.
-Chrome, Chromium, or Edge for `browse`.
+Chrome, Chromium, or Edge for `browse`. xdotool and ffmpeg on the display's
+side for `desk`.
 
 **Fonts.** Embedded, under their permissive licenses: DejaVu Sans for cards
 and burned subtitles, DejaVu Sans Mono for terminals, plus fallback fonts
