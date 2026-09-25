@@ -297,6 +297,92 @@ rates achievable locally and through `docker exec`; SGR coverage in
 `less`, and a Claude Code session); and which fallback fonts cover what those
 sessions print.
 
+## `browse`
+
+`movie browse` films a web app the way `term` films a shell: the agent
+drives a real Chrome one verb at a time, a detached recorder films the page,
+and `stop` renders the takes and writes the scene file. It replaces
+hand-written Playwright for the common case; the skill keeps Playwright as
+the escape hatch for drag and drop, uploads, iframes, and complex logins.
+
+### Verbs
+
+| Verb | Does | Exit |
+|---|---|---|
+| `start SESSION URL [--size 1280x720] [--title T] [--subtitle S] [--browser PATH]` | launch Chrome, start the recorder, load URL, then return | 0, or 2 |
+| `goto SESSION URL [--say S]` | load URL and wait for it | 0, 1 load failed |
+| `click SESSION TARGET [--say S]` | glide the cursor to TARGET and click it | 0, 1 not found or covered |
+| `type SESSION TARGET 'text' [--say S]` | click TARGET, then type at human pace | 0, 1 |
+| `press SESSION KEY [--say S]` | `Enter`, `Tab`, `Escape`, `Backspace`, `Up`, `Down`, `Left`, `Right`, or one character | 0 |
+| `wait SESSION TARGET [--timeout 10] [--say S]` | wait until TARGET is visible | 0, 1 timed out |
+| `page SESSION` | print the URL, title, visible text, and the targets on the page | 0 |
+| `cut SESSION`, `film SESSION on\|off` | as in `term` | 0 |
+| `stop SESSION OUTDIR` | close Chrome, render the takes, write `OUTDIR/scenes.yaml` | 0 |
+| `render SESSION OUTDIR` | render again from the recording | 0 |
+
+A TARGET is a CSS selector, or `text=Label`: the visible element whose
+text, value, `aria-label`, placeholder, or label is Label (ignoring case
+and extra spaces), preferring buttons, links, and form fields, then exact
+matches over partial ones. A target that matches nothing fails with the
+page's targets listed, so the next attempt is informed. A click whose point
+is covered by another element fails, naming it.
+
+After every action the verb waits for the page to settle (loaded, and no DOM
+change for 400 ms, at most 5 s), then prints one line: the URL and title.
+`page` is how the agent reads the page.
+
+`--say` works as in `term`: it ends a beat, its sentence narrates everything
+filmed since the previous `--say`, and the next action starts a new take.
+
+### How it works
+
+**Chrome.** `start` finds Chrome, Chromium, or Edge (`--browser` wins; then
+the standard macOS application paths; then `google-chrome`,
+`google-chrome-stable`, `chromium`, `chromium-browser`, `microsoft-edge` on
+PATH) and launches it detached: `--headless=new`, a fresh profile in
+`SESSION/profile`, `--remote-debugging-port=0` (Chrome writes the port it
+chose to `DevToolsActivePort` in the profile), `--window-size` from
+`--size`, `--force-device-scale-factor=1.25` so a 1280x720 viewport films at
+1600x900, `--hide-scrollbars`, `--mute-audio`, and `--no-sandbox` only when
+running as root. It runs on macOS, Linux, and WSL.
+
+**CDP.** `internal/cdp` is a small DevTools Protocol client over
+`github.com/coder/websocket`: one browser-level connection, flat sessions
+(`Target.attachToTarget` with `flatten`), calls matched to replies by id,
+and events delivered to a callback. chromedp was rejected: it adds about
+6 MB to each committed binary, and it closes tabs it attaches to.
+
+**Processes.** The recorder (`movie browse _record SESSION`) attaches to the
+page for the whole session: it adds the overlay script to every new
+document, starts `Page.startScreencast` (PNG, frames only when the page
+changes), writes each frame to `SESSION/frames/NNNNNN.png`, and appends
+`{t, frame}` to `frames.jsonl`, `t` being Chrome's frame timestamp. Each
+verb is a short process that attaches to the same page, acts, and exits
+without closing it (verified by spike). Verbs append `{t, film, busy, end}`
+marks to `marks.jsonl`: busy from the start of an action until it settles,
+film as set by `film` and `cut`. Take number and a pending cut live in
+`SESSION/state.json`; beats in `beats.jsonl` as in `term`. `stop` marks the
+end, writes `SESSION/stop`, waits for the recorder's `recorder.done`, closes
+Chrome with `Browser.close` (killing it if it lingers), and removes the
+profile.
+
+**The overlay** is a script added to every document. It draws an arrow
+cursor (fixed position, top z-index, no pointer events) that glides to each
+click target with easing and pulses on the click, remembers its position in
+`sessionStorage` so it does not jump on same-origin navigation, counts DOM
+mutations for the settle check, and implements TARGET lookup, so the rules
+live in one place.
+
+**Clicks and keys** are real input events (`Input.dispatchMouseEvent`,
+`Input.dispatchKeyEvent`), so every framework sees what a user's input
+would produce.
+
+**Rendering.** Frames and marks merge by time into one timeline. Takes,
+narration, waiting-time compression, and the scene file are shared with
+`term` in `internal/film`: time the agent spends between verbs (not busy)
+while the page holds still is cut to 1.5 s, time the app spends working is
+never cut, and each take holds its final picture at least 1.5 s.
+
 ## Instructions in the skill
 
 These routes get clear instructions and snippets instead of code, each
