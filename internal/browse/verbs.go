@@ -51,7 +51,7 @@ func Start(dir, url string, o StartOptions, stdout io.Writer) (err error) {
 	// same start can simply be run again.
 	defer func() {
 		if err != nil {
-			clearDir(abs)
+			cli.ClearDir(abs)
 		}
 	}()
 	b, err := cdp.Launch(path, cdp.Options{Profile: filepath.Join(abs, "profile"), Width: o.Width, Height: o.Height,
@@ -66,7 +66,7 @@ func Start(dir, url string, o StartOptions, stdout io.Writer) (err error) {
 			// The recorder notices, and writes its last lines and
 			// recorder.done; the directory is cleared only after that.
 			if spawned {
-				waitFor(5*time.Second, func() bool { return exists(filepath.Join(abs, "recorder.done")) })
+				cli.WaitFor(5*time.Second, func() bool { return cli.Exists(filepath.Join(abs, "recorder.done")) })
 			}
 		}
 	}()
@@ -95,7 +95,7 @@ func Start(dir, url string, o StartOptions, stdout io.Writer) (err error) {
 		return err
 	}
 	spawned = true
-	if !waitFor(10*time.Second, func() bool { return hasContent(filepath.Join(abs, "frames.jsonl")) }) {
+	if !cli.WaitFor(10*time.Second, func() bool { return cli.HasContent(filepath.Join(abs, "frames.jsonl")) }) {
 		return fmt.Errorf("the recorder did not start; see %s", filepath.Join(abs, "recorder.log"))
 	}
 	p, err := s.open()
@@ -150,37 +150,6 @@ func (s *Session) fitViewport(width, height int) error {
 		time.Sleep(50 * time.Millisecond)
 	}
 	return fmt.Errorf("the browser would not size its viewport to %dx%d (it is %dx%d)", width, height, inner.W, inner.H)
-}
-
-// waitFor polls cond until it holds, reporting false if it never does
-// within timeout.
-func waitFor(timeout time.Duration, cond func() bool) bool {
-	deadline := time.Now().Add(timeout)
-	for !cond() {
-		if time.Now().After(deadline) {
-			return false
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	return true
-}
-
-// clearDir removes everything in dir, which Start made or found empty.
-func clearDir(dir string) {
-	entries, _ := os.ReadDir(dir)
-	for _, e := range entries {
-		os.RemoveAll(filepath.Join(dir, e.Name()))
-	}
-}
-
-func exists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
-}
-
-func hasContent(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && info.Size() > 0
 }
 
 // loadFailed is the failure for a URL the browser could not load, such as
@@ -274,7 +243,7 @@ func (p *page) report(stdout io.Writer) error {
 // Stop ends the session: it marks the end, has the recorder finish, closes
 // the browser, removes its profile, and renders the takes.
 func Stop(s *Session, outdir string, stdout io.Writer) error {
-	if exists(filepath.Join(s.Dir, "stop")) {
+	if cli.Exists(filepath.Join(s.Dir, "stop")) {
 		return fmt.Errorf("%s is already stopped: use render to render it again", s.Dir)
 	}
 	if err := cli.RequireEmptyDir(outdir); err != nil {
@@ -286,7 +255,7 @@ func Stop(s *Session, outdir string, stdout io.Writer) error {
 	if err := os.WriteFile(filepath.Join(s.Dir, "stop"), nil, 0o644); err != nil {
 		return err
 	}
-	if !waitFor(5*time.Second, func() bool { return exists(filepath.Join(s.Dir, "recorder.done")) }) {
+	if !cli.WaitFor(5*time.Second, func() bool { return cli.Exists(filepath.Join(s.Dir, "recorder.done")) }) {
 		fmt.Fprintln(stdout, "WARN       the recorder did not confirm it stopped; rendering what it wrote")
 	}
 	closeBrowser(s.Browser)
@@ -309,7 +278,7 @@ func closeBrowser(b cdp.Browser) {
 		}
 		conn.Close()
 	}
-	if !waitFor(3*time.Second, func() bool { return !b.Alive() }) {
+	if !cli.WaitFor(3*time.Second, func() bool { return !b.Alive() }) {
 		b.Kill()
 	}
 }

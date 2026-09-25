@@ -1,0 +1,139 @@
+package main
+
+import (
+	"fmt"
+	"math/rand/v2"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"testing"
+	"time"
+)
+
+// deskContainer starts a container from internal/desk/testdata with Xvfb on
+// :99 and xcalc on it, removed when t ends, and returns the wrapper that
+// runs commands in it. It skips without Docker.
+func deskContainer(t *testing.T) []string {
+	t.Helper()
+	if exec.Command("docker", "info").Run() != nil {
+		t.Skip("needs Docker")
+	}
+	if out, err := exec.Command("docker", "build", "-q", "-t", "movie-desk-test", "../../internal/desk/testdata").CombinedOutput(); err != nil {
+		t.Fatalf("building the test image: %v\n%s", err, out)
+	}
+	name := fmt.Sprintf("movie-desk-test-%d", rand.IntN(1e9))
+	if out, err := exec.Command("docker", "run", "-d", "--init", "--name", name, "movie-desk-test").CombinedOutput(); err != nil {
+		t.Fatalf("starting the container: %v\n%s", err, out)
+	}
+	t.Cleanup(func() { exec.Command("docker", "rm", "-f", name).Run() })
+	exec.Command("docker", "exec", "-d", name, "Xvfb", ":99", "-screen", "0", "800x600x24").Run()
+	time.Sleep(time.Second)
+	exec.Command("docker", "exec", "-d", "-e", "DISPLAY=:99", name, "xcalc").Run()
+	return []string{"docker", "exec", name}
+}
+
+func startDesk(t *testing.T, dir string, wrapper []string, args ...string) string {
+	t.Helper()
+	session := filepath.Join(dir, "session")
+	t.Cleanup(func() {
+		// the recorder notices the container going away; wait for its last write
+		done := filepath.Join(session, "recorder.done")
+		for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+			if _, err := os.Stat(done); err == nil {
+				return
+			}
+		}
+	})
+	argv := append(append([]string{"desk", "start", session, "--display", ":99"}, args...), "--")
+	r := runMovie(t, dir, append(argv, wrapper...)...)
+	if r.code != 0 {
+		t.Fatalf("start: code %d\n%s%s", r.code, r.stdout, r.stderr)
+	}
+	return session
+}
+
+func mustDesk(t *testing.T, dir string, args ...string) result {
+	t.Helper()
+	r := runMovie(t, dir, append([]string{"desk"}, args...)...)
+	if r.code != 0 {
+		t.Fatalf("desk %q: code %d\n%s%s", args, r.code, r.stdout, r.stderr)
+	}
+	return r
+}
+
+func TestDeskDrivesAndFilmsADesktopApp(t *testing.T) {
+	wrapper := deskContainer(t)
+	dir := t.TempDir()
+	session := startDesk(t, dir, wrapper, "--window", "Calculator", "--title", "xcalc")
+
+	r := mustDesk(t, dir, "shot", session)
+	m := regexp.MustCompile(`(\S+\.png) \((\d+)x(\d+)\), pointer at `).FindStringSubmatch(r.stdout)
+	if m == nil {
+		t.Fatalf("shot printed %q", r.stdout)
+	}
+	shot := readPNG(t, m[1])
+	if fmt.Sprint(shot.Bounds().Dx(), "x", shot.Bounds().Dy()) != m[2]+"x"+m[3] {
+		t.Fatalf("shot is %v, printed %sx%s", shot.Bounds(), m[2], m[3])
+	}
+
+	r = mustDesk(t, dir, "move", session, "20", "20")
+	mustDesk(t, dir, "type", session, "12*34=", "--say", "We multiply twelve by thirty-four.")
+	r = mustDesk(t, dir, "click", session, "30", "10")
+	if !strings.Contains(r.stdout, "clicked at 30,10") {
+		t.Errorf("click printed %q", r.stdout)
+	}
+	mustDesk(t, dir, "key", session, "Escape")
+	mustDesk(t, dir, "wait", session, "--quiet", "0.5", "--timeout", "5", "--say", "Then clear it.")
+
+	takes := filepath.Join(dir, "takes")
+	r = mustDesk(t, dir, "stop", session, takes)
+	if !strings.Contains(r.stdout, "2 takes, 2 narrated") {
+		t.Fatalf("stop printed:\n%s", r.stdout)
+	}
+	scenes, _ := os.ReadFile(filepath.Join(takes, "scenes.yaml"))
+	for _, want := range []string{"# Written by movie desk stop.", "card: xcalc", "narration: We multiply twelve by thirty-four."} {
+		if !strings.Contains(string(scenes), want) {
+			t.Errorf("scenes.yaml lacks %q:\n%s", want, scenes)
+		}
+	}
+	frames, _ := filepath.Glob(filepath.Join(takes, "take-1", "f*.png"))
+	if len(frames) < 15 {
+		t.Fatalf("take-1 has %d frames", len(frames))
+	}
+	first, last := readPNG(t, frames[0]), readPNG(t, frames[len(frames)-1])
+	if first.Bounds() != shot.Bounds() {
+		t.Errorf("frames are %v, the shot %v", first.Bounds(), shot.Bounds())
+	}
+	if samePicture(first, last) {
+		t.Error("take 1 should end on the product, not the calculator it opened on")
+	}
+}
+
+func TestDeskRefusesWhatItCannotDo(t *testing.T) {
+	wrapper := deskContainer(t)
+	dir := t.TempDir()
+	r := runMovie(t, dir, append([]string{"desk", "start", filepath.Join(dir, "a"), "--"}, wrapper...)...)
+	if r.code != 2 || !strings.Contains(r.stderr, "--display") {
+		t.Errorf("wrapped without --display: code %d\n%s", r.code, r.stderr)
+	}
+	r = runMovie(t, dir, append([]string{"desk", "start", filepath.Join(dir, "b"), "--display", ":99", "--window", "No Such Window", "--"}, wrapper...)...)
+	if r.code != 2 || !strings.Contains(r.stderr, `no visible window named "No Such Window"`) {
+		t.Errorf("a missing window: code %d\n%s", r.code, r.stderr)
+	}
+	session := startDesk(t, dir, wrapper)
+	r = runMovie(t, dir, "desk", "click", session, "5000", "5")
+	if r.code != 2 || !strings.Contains(r.stderr, "outside the filmed 800x600") {
+		t.Errorf("a click off the display: code %d\n%s", r.code, r.stderr)
+	}
+	r = runMovie(t, dir, "desk", "wait", session, "--quiet", "3", "--timeout", "1")
+	if r.code != 1 || !strings.Contains(r.stderr, "did not hold still") {
+		t.Errorf("a wait that times out: code %d\n%s", r.code, r.stderr)
+	}
+	mustDesk(t, dir, "stop", session, filepath.Join(dir, "takes"))
+	r = runMovie(t, dir, "desk", "stop", session, filepath.Join(dir, "again"))
+	if r.code != 2 || !strings.Contains(r.stderr, "already stopped") {
+		t.Errorf("a second stop: code %d\n%s", r.code, r.stderr)
+	}
+}
