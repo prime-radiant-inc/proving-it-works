@@ -434,7 +434,8 @@ func TestStopPrintsReadyToPasteScenes(t *testing.T) {
 	takes := filepath.Join(dir, "takes")
 	r := runMovie(t, dir, "term", "stop", session, takes)
 	for i := 1; i <= 2; i++ {
-		want := fmt.Sprintf("  - id: take-%d\n    frames: %s\n    narration_at: end\n", i, filepath.Join(takes, fmt.Sprintf("take-%d", i)))
+		// the movie ran in dir, so the frames path is shown relative to it
+		want := fmt.Sprintf("  - id: take-%d\n    frames: takes/take-%d\n    narration_at: end\n", i, i)
 		if !strings.Contains(r.stdout, want) {
 			t.Errorf("missing scene entry %q in:\n%s", want, r.stdout)
 		}
@@ -485,5 +486,16 @@ func TestRunPrintsOutputThatScrolledOffTheScreen(t *testing.T) {
 		if !hasLine(r.stdout, want) {
 			t.Errorf("missing line %q in:\n%s", want, r.stdout)
 		}
+	}
+}
+
+// stop's scene entries use paths as short as the agent typed them.
+func TestStopPrintsRelativeFramePathsWhenShorter(t *testing.T) {
+	dir := t.TempDir()
+	session := startSession(t, dir)
+	runMovie(t, dir, "term", "run", session, "echo hi")
+	r := runMovie(t, dir, "term", "stop", "session", "takes")
+	if !strings.Contains(r.stdout, "    frames: takes/take-1\n") {
+		t.Fatalf("want a relative frames path:\n%s", r.stdout)
 	}
 }

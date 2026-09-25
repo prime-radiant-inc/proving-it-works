@@ -3,9 +3,9 @@ package build
 import (
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 
+	"github.com/prime-radiant-inc/proving-it-works/internal/cli"
 	"github.com/prime-radiant-inc/proving-it-works/internal/ffmpeg"
 	"github.com/prime-radiant-inc/proving-it-works/internal/narrate"
 	"github.com/prime-radiant-inc/proving-it-works/internal/scene"
@@ -54,24 +54,11 @@ func narrateAll(f *scene.File, scratch string, stdout io.Writer) (map[string]cli
 		if rendered {
 			how, anyRendered = "rendered", true
 		}
-		fmt.Fprintf(stdout, "narration  %s  %.1fs  %s  %s\n", sc.ID, info.Duration, how, shortPath(wav))
+		fmt.Fprintf(stdout, "narration  %s  %.1fs  %s  %s\n", sc.ID, info.Duration, how, cli.ShortPath(wav))
 	}
 	if e.Name() == "piper" && anyRendered {
 		fmt.Fprintln(stdout, "local voice: it mispronounces unusual names rather than dropping them - "+
 			"listen to one clip before you commit to a voice.")
 	}
 	return clips, nil
-}
-
-// shortPath shows path relative to the current directory when that is
-// shorter, as an agent reading the output would type it.
-func shortPath(path string) string {
-	wd, err := os.Getwd()
-	if err != nil {
-		return path
-	}
-	if rel, err := filepath.Rel(wd, path); err == nil && len(rel) < len(path) {
-		return rel
-	}
-	return path
 }

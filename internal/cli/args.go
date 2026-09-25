@@ -4,6 +4,8 @@ package cli
 import (
 	"flag"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -41,4 +43,17 @@ func ParseSize(s string) (int, int, error) {
 		return 0, 0, fmt.Errorf("size %q is not two positive whole numbers", s)
 	}
 	return width, height, nil
+}
+
+// ShortPath shows path relative to the current directory when that is
+// shorter, as the person or agent reading the output would type it.
+func ShortPath(path string) string {
+	wd, err := os.Getwd()
+	if err != nil {
+		return path
+	}
+	if rel, err := filepath.Rel(wd, path); err == nil && len(rel) < len(path) {
+		return rel
+	}
+	return path
 }

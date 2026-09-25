@@ -20,6 +20,7 @@ import (
 	"golang.org/x/image/font/sfnt"
 	"golang.org/x/image/math/fixed"
 
+	"github.com/prime-radiant-inc/proving-it-works/internal/cli"
 	"github.com/prime-radiant-inc/proving-it-works/internal/fonts"
 )
 
@@ -191,7 +192,7 @@ func Render(dir, outdir string, px image.Point, stdout io.Writer) error {
 			return err
 		}
 		fmt.Fprintf(stdout, "%s: %d frames, %.1fs -> %s\n", name, len(slots), t.End-t.Start, takeDir)
-		fmt.Fprintf(&scenes, "  - id: %s\n    frames: %s\n    narration_at: end\n", name, takeDir)
+		fmt.Fprintf(&scenes, "  - id: %s\n    frames: %s\n    narration_at: end\n", name, cli.ShortPath(takeDir))
 	}
 	fmt.Fprintf(stdout, "\nScenes for your scene file: add a narration to each. Each take ends on its result, "+
 		"so narration_at: end makes the narration finish there; each takes its rate from take.json.\n%s", scenes.String())
