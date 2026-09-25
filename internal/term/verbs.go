@@ -177,7 +177,7 @@ func PressKey(s *Session, name string) error {
 
 // Wait waits for the next prompt, or for quiet, or for timeout.
 func Wait(s *Session, timeout, quiet time.Duration, stdout io.Writer) (int, error) {
-	return s.await(timeout, quiet, stdout)
+	return s.await(timeout, quiet, wholeScreen, stdout)
 }
 
 // Screen prints the screen as text.
@@ -250,15 +250,20 @@ func RunCommand(s *Session, command string, timeout time.Duration, stdout io.Wri
 	if !st.AtPrompt() {
 		return exitcode.Usage, fmt.Errorf("the shell is not at a prompt (%s is running): use wait, or key C-c", st.Command)
 	}
+	// The absolute line (history plus screen row) the command is typed on,
+	// so what run prints can start there even if the output scrolls.
+	from := st.History + st.CursorY
 	if err := s.send(command, "Enter"); err != nil {
 		return exitcode.Usage, err
 	}
-	return s.await(timeout, 0, stdout)
+	return s.await(timeout, 0, from, stdout)
 }
 
 // await waits for the next prompt, for the screen to stay unchanged for
-// quiet (when quiet > 0), or for timeout, and prints the outcome and screen.
-func (s *Session) await(timeout, quiet time.Duration, stdout io.Writer) (int, error) {
+// quiet (when quiet > 0), or for timeout, and prints the outcome and, when
+// from is not wholeScreen, the lines from absolute line from onward (a
+// command and its output) instead of the whole screen.
+func (s *Session) await(timeout, quiet time.Duration, from int, stdout io.Writer) (int, error) {
 	start, lastChange := time.Now(), time.Now()
 	last := ""
 	for {
@@ -266,10 +271,11 @@ func (s *Session) await(timeout, quiet time.Duration, stdout io.Writer) (int, er
 		if err != nil {
 			return exitcode.Usage, err
 		}
+		shown := func() string { return s.since(from, st) }
 		switch {
 		case st.AtPrompt():
 			code := st.Code
-			report(stdout, Outcome{"completed", &code}, st.Screen)
+			report(stdout, Outcome{"completed", &code}, shown())
 			if code == 0 {
 				return exitcode.OK, nil
 			}
@@ -277,15 +283,33 @@ func (s *Session) await(timeout, quiet time.Duration, stdout io.Writer) (int, er
 		case st.Screen != last:
 			last, lastChange = st.Screen, time.Now()
 		case quiet > 0 && time.Since(lastChange) >= quiet:
-			report(stdout, Outcome{Outcome: "quiet"}, st.Screen)
+			report(stdout, Outcome{Outcome: "quiet"}, shown())
 			return exitcode.Running, nil
 		}
 		if time.Since(start) >= timeout {
-			report(stdout, Outcome{Outcome: "running"}, st.Screen)
+			report(stdout, Outcome{Outcome: "running"}, shown())
 			return exitcode.Running, nil
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+}
+
+// wholeScreen tells await to print the screen rather than one command's lines.
+const wholeScreen = -1
+
+// since returns the pane's text from absolute line from (counting tmux's
+// history) to the bottom of the screen, or the whole screen for wholeScreen.
+func (s *Session) since(from int, st Status) string {
+	if from == wholeScreen {
+		return st.Screen
+	}
+	// capture-pane numbers visible lines from 0 and history lines below 0
+	start := from - st.History
+	out, err := s.tmux("capture-pane", "-p", "-t", window, "-S", strconv.Itoa(start))
+	if err != nil {
+		return st.Screen
+	}
+	return out
 }
 
 func report(stdout io.Writer, o Outcome, screen string) {

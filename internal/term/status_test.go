@@ -21,12 +21,12 @@ func TestParseTitle(t *testing.T) {
 }
 
 func TestParseStatusSplitsStatusLineFromScreen(t *testing.T) {
-	st, err := parseStatus("2;1;120;34;1;on;0;;4;bash;MOVIE;5;1\n$ false\n$\n")
+	st, err := parseStatus("2;1;120;34;1;on;0;;4;37;bash;MOVIE;5;1\n$ false\n$\n")
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := Status{CursorX: 2, CursorY: 1, Cols: 120, Rows: 34, CursorVisible: true, Film: true,
-		Sent: 4, Seq: 5, Code: 1, Command: "bash", Screen: "$ false\n$\n"}
+		Sent: 4, History: 37, Seq: 5, Code: 1, Command: "bash", Screen: "$ false\n$\n"}
 	if st != want {
 		t.Fatalf("got %+v", st)
 	}
@@ -36,14 +36,14 @@ func TestParseStatusSplitsStatusLineFromScreen(t *testing.T) {
 }
 
 func TestParseStatusReadsStop(t *testing.T) {
-	st, err := parseStatus("0;0;80;24;0;on;1;;0;bash;bash\n\n")
+	st, err := parseStatus("0;0;80;24;0;on;1;;0;0;bash;bash\n\n")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !st.Stop {
 		t.Fatalf("got %+v, want Stop true", st)
 	}
-	st, err = parseStatus("0;0;80;24;0;on;0;;0;bash;bash\n\n")
+	st, err = parseStatus("0;0;80;24;0;on;0;;0;0;bash;bash\n\n")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestParseStatusReadsAPendingFilmOff(t *testing.T) {
 		ack  string
 		want bool
 	}{{"0", true}, {"1", false}, {"", false}} {
-		st, err := parseStatus("0;0;80;24;0;off;0;" + c.ack + ";0;bash;bash\n\n")
+		st, err := parseStatus("0;0;80;24;0;off;0;" + c.ack + ";0;0;bash;bash\n\n")
 		if err != nil {
 			t.Fatal(err)
 		}

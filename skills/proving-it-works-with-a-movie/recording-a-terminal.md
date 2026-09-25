@@ -46,7 +46,7 @@ dead air in the movie.
 | Verb | Does | Exit |
 |---|---|---|
 | `start SESSION [--cwd DIR] [--size 120x34] [-- WRAPPER...]` | start the session and the recorder, then return | 0, or 2 |
-| `run SESSION 'cmd' [--timeout 60]` | type the command at human pace, press Enter, wait for the prompt; print the outcome and the screen | 0 succeeded, 1 failed, 2 refused (a command is still running), 3 still running at the timeout |
+| `run SESSION 'cmd' [--timeout 60]` | type the command at human pace, press Enter, wait for the prompt; print the outcome, then the command and its output (all of it, even if it scrolled) | 0 succeeded, 1 failed, 2 refused (a command is still running), 3 still running at the timeout |
 | `type SESSION 'text'` | type into whatever is running, such as a TUI's input box | 0 |
 | `key SESSION NAME` | `Enter`, `Escape`, `Tab`, `Up`, `Down`, `Left`, `Right`, `C-c`, or one character | 0 |
 | `wait SESSION [--quiet S] [--timeout 60]` | wait for the prompt (0 or 1), or for the screen to hold still for S seconds (3, still running) | |

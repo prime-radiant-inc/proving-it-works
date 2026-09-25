@@ -460,3 +460,30 @@ func TestThinkingTimeBetweenCommandsIsCutFromTheTake(t *testing.T) {
 		t.Fatalf("take-1 has %d frames (%.1f s): thinking time was filmed", len(frames), float64(len(frames))/10)
 	}
 }
+
+// run prints what its own command did, not the whole screen: an agent pays
+// for every line of earlier commands it has already seen.
+func TestRunPrintsOnlyItsOwnCommandAndOutput(t *testing.T) {
+	dir := t.TempDir()
+	session := startSession(t, dir)
+	runMovie(t, dir, "term", "run", session, "echo EARLIER")
+	r := runMovie(t, dir, "term", "run", session, "echo LATER")
+	if r.code != 0 || !strings.Contains(r.stdout, "echo LATER") || !hasLine(r.stdout, "LATER") {
+		t.Fatalf("code %d, want the command and its output:\n%s", r.code, r.stdout)
+	}
+	if strings.Contains(r.stdout, "EARLIER") {
+		t.Fatalf("run printed an earlier command's output:\n%s", r.stdout)
+	}
+}
+
+// Output longer than the screen scrolls; run still prints all of it.
+func TestRunPrintsOutputThatScrolledOffTheScreen(t *testing.T) {
+	dir := t.TempDir()
+	session := startSession(t, dir) // 10 rows
+	r := runMovie(t, dir, "term", "run", session, "seq 1 40")
+	for _, want := range []string{"1", "20", "40"} {
+		if !hasLine(r.stdout, want) {
+			t.Errorf("missing line %q in:\n%s", want, r.stdout)
+		}
+	}
+}

@@ -14,6 +14,7 @@ type Status struct {
 	CursorVisible, Film, Stop    bool
 	FilmOffPending               bool   // SetFilm turned filming off and the recorder has not yet confirmed it
 	Sent                         int    // prompt sequence number when input was last sent
+	History                      int    // lines scrolled off the top of the screen into tmux's history
 	Seq, Code                    int    // the latest prompt's sequence number and reported status
 	Command                      string // the pane's foreground command
 	Screen                       string
@@ -24,7 +25,7 @@ type Status struct {
 func (st Status) AtPrompt() bool { return st.Seq > st.Sent && st.Command == "bash" }
 
 const statusFormat = "#{cursor_x};#{cursor_y};#{pane_width};#{pane_height};#{cursor_flag};" +
-	"#{@movie_film};#{@movie_stop};#{@movie_film_ack};#{@movie_sent};#{pane_current_command};#{pane_title}"
+	"#{@movie_film};#{@movie_stop};#{@movie_film_ack};#{@movie_sent};#{history_size};#{pane_current_command};#{pane_title}"
 
 // parseTitle reads the MOVIE;<sequence>;<status> marker the prompt sets.
 func parseTitle(title string) (seq, code int, ok bool) {
@@ -43,8 +44,8 @@ func parseTitle(title string) (seq, code int, ok bool) {
 // parseStatus reads a snapshot: one status line, then the screen.
 func parseStatus(out string) (Status, error) {
 	line, screen, _ := strings.Cut(out, "\n")
-	f := strings.SplitN(line, ";", 11)
-	if len(f) != 11 {
+	f := strings.SplitN(line, ";", 12)
+	if len(f) != 12 {
 		return Status{}, fmt.Errorf("unexpected tmux status line %q", line)
 	}
 	var n [4]int
@@ -57,9 +58,10 @@ func parseStatus(out string) (Status, error) {
 	}
 	st := Status{CursorX: n[0], CursorY: n[1], Cols: n[2], Rows: n[3],
 		CursorVisible: f[4] == "1", Film: f[5] != "off", Stop: f[6] == "1", FilmOffPending: f[7] == "0",
-		Command: f[9], Screen: screen}
+		Command: f[10], Screen: screen}
 	st.Sent, _ = strconv.Atoi(f[8])
-	st.Seq, st.Code, _ = parseTitle(f[10])
+	st.History, _ = strconv.Atoi(f[9])
+	st.Seq, st.Code, _ = parseTitle(f[11])
 	return st, nil
 }
 
