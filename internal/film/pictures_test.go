@@ -1,10 +1,8 @@
-package browse
+package film
 
 import (
 	"slices"
 	"testing"
-
-	"github.com/prime-radiant-inc/proving-it-works/internal/film"
 )
 
 func TestShotsMergeFramesAndMarksByTime(t *testing.T) {
@@ -22,7 +20,7 @@ func TestShotsMergeFramesAndMarksByTime(t *testing.T) {
 		{T: 8, End: true},              // stop
 	}
 	got := Shots(frames, marks)
-	want := []film.Shot{
+	want := []Shot{
 		{T: 1, Look: "000001.png", Index: 0},
 		{T: 3, Look: "000002.png", Index: 1},
 		{T: 4, Film: true, Waiting: true, Look: "000002.png", Index: 1},
@@ -48,7 +46,7 @@ func TestARecorderThatEndedOnItsOwnEndsTheTimeline(t *testing.T) {
 	if last := got[len(got)-1]; !last.End || last.T != 3 {
 		t.Fatalf("got %+v", got)
 	}
-	if takes := film.Split(got); len(takes) != 1 || takes[0].End != 3 {
+	if takes := Split(got); len(takes) != 1 || takes[0].End != 3 {
 		t.Fatalf("takes %+v", takes)
 	}
 }

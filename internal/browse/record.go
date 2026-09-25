@@ -11,20 +11,22 @@ import (
 	"time"
 
 	"github.com/prime-radiant-inc/proving-it-works/internal/cdp"
-	"github.com/prime-radiant-inc/proving-it-works/internal/jsonl"
+	"github.com/prime-radiant-inc/proving-it-works/internal/film"
 )
 
 // Record films the session's page until stop asks it to finish or the
-// browser goes away. It adds the overlay to every document the page loads,
-// saves each screencast frame that differs from the last to
-// frames/NNNNNN.png, and appends it to frames.jsonl, of which it is the only
-// writer. Problems go to log (recorder.log).
+// browser goes away. It adds the overlay to every document the page loads
+// and puts each screencast frame on a film.Reel. Problems go to log
+// (recorder.log).
 func Record(dir string, log io.Writer) error {
 	s, err := Load(dir)
 	if err != nil {
 		return err
 	}
-	framesPath := filepath.Join(s.Dir, "frames.jsonl")
+	reel, err := film.NewReel(s.Dir)
+	if err != nil {
+		return err
+	}
 	defer os.WriteFile(filepath.Join(s.Dir, "recorder.done"), nil, 0o644)
 	ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
 	defer cancel()
@@ -70,13 +72,8 @@ func Record(dir string, log io.Writer) error {
 			return err
 		}
 	}
-	if err := os.MkdirAll(filepath.Join(s.Dir, "frames"), 0o755); err != nil {
-		return err
-	}
 	tick := time.NewTicker(100 * time.Millisecond)
 	defer tick.Stop()
-	var last []byte
-	n := 0
 	for {
 		select {
 		case raw := <-frames:
@@ -95,28 +92,19 @@ func Record(dir string, log io.Writer) error {
 				fmt.Fprintf(log, "undecodable frame: %v\n", err)
 				continue
 			}
-			if string(png) == string(last) {
-				continue // the same picture again: nothing changed
-			}
-			last = png
-			n++
-			name := fmt.Sprintf("%06d.png", n)
-			if err := os.WriteFile(filepath.Join(s.Dir, "frames", name), png, 0o644); err != nil {
-				return err
-			}
 			t := f.Metadata.Timestamp
 			if t == 0 {
-				t = now()
+				t = film.Now()
 			}
-			if err := jsonl.Append(framesPath, Frame{T: t, File: name}); err != nil {
+			if err := reel.Add(t, png); err != nil {
 				return err
 			}
 		case <-tick.C:
 			if _, err := os.Stat(filepath.Join(s.Dir, "stop")); err == nil {
-				return jsonl.Append(framesPath, Frame{T: now(), End: true})
+				return reel.End(film.Now(), "")
 			}
 		case <-conn.Done():
-			return jsonl.Append(framesPath, Frame{T: now(), End: true, Reason: "the browser closed or crashed"})
+			return reel.End(film.Now(), "the browser closed or crashed")
 		}
 	}
 }

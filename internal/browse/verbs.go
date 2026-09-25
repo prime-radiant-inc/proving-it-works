@@ -1,12 +1,9 @@
 package browse
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"image"
-	"image/png"
 	"io"
 	"os"
 	"path/filepath"
@@ -16,7 +13,6 @@ import (
 	"github.com/prime-radiant-inc/proving-it-works/internal/cdp"
 	"github.com/prime-radiant-inc/proving-it-works/internal/cli"
 	"github.com/prime-radiant-inc/proving-it-works/internal/film"
-	"github.com/prime-radiant-inc/proving-it-works/internal/jsonl"
 )
 
 // scale is the device pixels per CSS pixel the page is filmed at: a
@@ -92,10 +88,7 @@ func Start(dir, url string, o StartOptions, stdout io.Writer) (err error) {
 	if err := s.fitViewport(o.Width, o.Height); err != nil {
 		return err
 	}
-	if err := s.setState(state{Take: 1}); err != nil {
-		return err
-	}
-	if err := s.mark(false, true); err != nil {
+	if err := s.set().Open(); err != nil {
 		return err
 	}
 	if err := cli.SpawnDetached(filepath.Join(abs, "recorder.log"), "browse", "_record", abs); err != nil {
@@ -113,10 +106,7 @@ func Start(dir, url string, o StartOptions, stdout io.Writer) (err error) {
 	if err := p.navigate(url); err != nil {
 		return err
 	}
-	if err := s.setState(state{Take: 1, Film: true}); err != nil {
-		return err
-	}
-	if err := s.mark(true, false); err != nil {
+	if err := s.set().Roll(); err != nil {
 		return err
 	}
 	fmt.Fprintf(stdout, "{\"ready\":true,\"session\":%q}\n", abs)
@@ -196,7 +186,7 @@ func hasContent(path string) bool {
 // loadFailed is the failure for a URL the browser could not load, such as
 // one whose server refused the connection: the app's failure, not the tool's.
 func loadFailed(url, reason string) error {
-	return Failed{fmt.Sprintf("could not load %s: %s", url, reason)}
+	return film.Failed{Msg: fmt.Sprintf("could not load %s: %s", url, reason)}
 }
 
 // navigate loads url and waits for it to load and settle.
@@ -290,7 +280,7 @@ func Stop(s *Session, outdir string, stdout io.Writer) error {
 	if err := cli.RequireEmptyDir(outdir); err != nil {
 		return err
 	}
-	if err := jsonl.Append(filepath.Join(s.Dir, "marks.jsonl"), Mark{T: now(), End: true}); err != nil {
+	if err := s.set().End(); err != nil {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(s.Dir, "stop"), nil, 0o644); err != nil {
@@ -331,42 +321,9 @@ func Render(dir, outdir string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	frames, err := jsonl.Read[Frame](filepath.Join(abs, "frames.jsonl"))
-	if err != nil {
-		return err
-	}
-	marks, err := jsonl.Read[Mark](filepath.Join(abs, "marks.jsonl"))
-	if err != nil {
-		return err
-	}
-	beats, err := film.ReadBeats(abs)
-	if err != nil {
-		return err
-	}
 	m := film.Movie{Tool: "movie browse stop"}
 	if s, err := Load(abs); err == nil {
 		m.Title, m.Subtitle = s.Title, s.Subtitle
 	}
-	shots := Shots(frames, marks)
-	if len(shots) > 0 {
-		first, err := os.ReadFile(filepath.Join(abs, "frames", shots[0].Look))
-		if err != nil {
-			return err
-		}
-		cfg, err := png.DecodeConfig(bytes.NewReader(first))
-		if err != nil {
-			return fmt.Errorf("frames/%s: %w", shots[0].Look, err)
-		}
-		m.Size = image.Pt(cfg.Width, cfg.Height)
-	}
-	draw := func(shot film.Shot) ([]byte, error) { return os.ReadFile(filepath.Join(abs, "frames", shot.Look)) }
-	if _, err := film.Write(outdir, m, film.Split(shots), beats, draw, stdout); err != nil {
-		return err
-	}
-	for _, f := range frames {
-		if f.End && f.Reason != "" {
-			fmt.Fprintf(stdout, "WARN       the recording ended without a stop: %s\n", f.Reason)
-		}
-	}
-	return nil
+	return film.RenderPictures(abs, outdir, m, stdout)
 }

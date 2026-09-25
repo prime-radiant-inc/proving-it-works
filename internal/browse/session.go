@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/prime-radiant-inc/proving-it-works/internal/cdp"
-	"github.com/prime-radiant-inc/proving-it-works/internal/jsonl"
+	"github.com/prime-radiant-inc/proving-it-works/internal/film"
 )
 
 //go:embed overlay.js
@@ -66,38 +66,8 @@ func writeJSON(path string, v any) error {
 	return os.Rename(tmp, path)
 }
 
-// state is what the verbs remember between them, in SESSION/state.json:
-// the number of the take being filmed (from 1), whether filming is on, and
-// whether the last action ended a narrated beat, so the next one cuts.
-type state struct {
-	Take       int  `json:"take"`
-	Film       bool `json:"film"`
-	CutPending bool `json:"cut_pending"`
-}
-
-func (s *Session) state() (state, error) {
-	var st state
-	data, err := os.ReadFile(filepath.Join(s.Dir, "state.json"))
-	if err != nil {
-		return st, err
-	}
-	return st, json.Unmarshal(data, &st)
-}
-
-func (s *Session) setState(st state) error {
-	return writeJSON(filepath.Join(s.Dir, "state.json"), st)
-}
-
-// mark records, from now on, whether filming is on and whether an action is
-// under way.
-func (s *Session) mark(film, busy bool) error { return s.markAt(now(), film, busy) }
-
-// markAt records the same from time t on.
-func (s *Session) markAt(t float64, film, busy bool) error {
-	return jsonl.Append(filepath.Join(s.Dir, "marks.jsonl"), Mark{T: t, Film: film, Busy: busy})
-}
-
-func now() float64 { return float64(time.Now().UnixNano()) / 1e9 }
+// set is the session's take and beat bookkeeping.
+func (s *Session) set() film.Set { return film.Set{Dir: s.Dir} }
 
 // page is a connection to the session's page, for one verb.
 type page struct {

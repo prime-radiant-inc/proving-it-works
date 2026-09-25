@@ -1,7 +1,6 @@
 package browse
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -11,125 +10,33 @@ import (
 	"github.com/prime-radiant-inc/proving-it-works/internal/film"
 )
 
-// Failed is an action the page would not let happen: a target that is not
-// there or is covered, a wait that timed out, a URL that would not load.
-// It is the app's verdict, not a mistake in the command (exit 1).
-type Failed struct{ Msg string }
-
-func (e Failed) Error() string { return e.Msg }
-
 // action is one verb's work on the page. It returns a line saying what it
 // acted on, printed before where the page ended up.
 type action func(p *page) (string, error)
 
-// act runs one action on the page. If the previous action ended a narrated
-// beat, it first cuts to a new take. The page is marked busy from the start
-// of the action until it settles; a failed action's time counts as waiting,
-// so a timed-out wait leaves no dead air. With say, a successful action ends
-// a beat: say narrates everything filmed since the previous beat ended, and
-// the next action starts a new take. It prints where the page is after.
+// act runs one action on the page, as film.Set.Act describes, settling the
+// page after it, and prints what it acted on and where the page is after.
 func act(s *Session, say string, stdout io.Writer, do action) (int, error) {
-	st, err := s.state()
-	if err != nil {
-		return exitcode.Usage, err
-	}
-	if say != "" && !st.Film {
-		return exitcode.Usage, errors.New("filming is off, so nothing would show what --say describes: " +
-			"film on, then --say on an action that shows the result (wait for it, if need be)")
-	}
 	p, err := s.open()
 	if err != nil {
 		return exitcode.Usage, err
 	}
 	defer p.close()
-	if st.CutPending {
-		if err := s.cut(&st); err != nil {
-			return exitcode.Usage, err
-		}
-	}
-	began := now()
-	if err := s.markAt(began, st.Film, true); err != nil {
-		return exitcode.Usage, err
-	}
-	did, actErr := do(p)
-	var failed Failed
-	if errors.As(actErr, &failed) {
-		// the busy mark and this one share a time; this one, written later, wins
-		if err := s.markAt(began, st.Film, false); err != nil {
-			return exitcode.Usage, err
-		}
-		return exitcode.Verdict, actErr
-	}
-	if actErr == nil {
-		p.settle(time.Now())
-	}
-	if err := s.mark(st.Film, false); err != nil {
-		return exitcode.Usage, err
-	}
-	if actErr != nil {
-		return exitcode.Usage, actErr
-	}
-	if say != "" {
-		if err := film.AppendBeat(s.Dir, film.Beat{Take: st.Take, Say: say}); err != nil {
-			return exitcode.Usage, err
-		}
-		st.CutPending = true
-		if err := s.setState(st); err != nil {
-			return exitcode.Usage, err
-		}
+	did, code, err := s.set().Act(say, func() (string, error) { return do(p) }, func() { p.settle(time.Now()) })
+	if err != nil {
+		return code, err
 	}
 	if did != "" {
 		fmt.Fprintln(stdout, did)
 	}
-	return exitcode.OK, p.report(stdout)
+	return code, p.report(stdout)
 }
 
 // SetFilm turns filming on or off; each on after an off starts a new take.
-func SetFilm(s *Session, on bool) error {
-	st, err := s.state()
-	if err != nil {
-		return err
-	}
-	return s.setFilm(&st, on)
-}
-
-func (s *Session) setFilm(st *state, on bool) error {
-	if st.Film == on {
-		return nil
-	}
-	if on {
-		// a new take starts here, which is all a pending cut would do
-		st.Take++
-		st.CutPending = false
-	}
-	st.Film = on
-	if err := s.mark(on, false); err != nil {
-		return err
-	}
-	return s.setState(*st)
-}
+func SetFilm(s *Session, on bool) error { return s.set().SetFilm(on) }
 
 // Cut ends the current take, holding its last picture, and starts the next.
-func Cut(s *Session) error {
-	st, err := s.state()
-	if err != nil {
-		return err
-	}
-	return s.cut(&st)
-}
-
-// cut ends the take being filmed and starts the next. With filming off
-// there is no take to end, and the next film on starts a new one anyway.
-func (s *Session) cut(st *state) error {
-	st.CutPending = false
-	if !st.Film {
-		return s.setState(*st)
-	}
-	if err := s.setFilm(st, false); err != nil {
-		return err
-	}
-	return s.setFilm(st, true)
-}
+func Cut(s *Session) error { return s.set().Cut() }
 
 // goTo loads url.
 func goTo(url string) action {
@@ -177,7 +84,7 @@ func (p *page) glideTo(target string) (point, error) {
 	case "missing":
 		return at, p.missing(target)
 	case "covered":
-		return at, Failed{fmt.Sprintf("%s is covered by %s, so a click would land on that instead", at.What, at.By)}
+		return at, film.Failed{Msg: fmt.Sprintf("%s is covered by %s, so a click would land on that instead", at.What, at.By)}
 	}
 	return at, p.eval(fmt.Sprintf("__movie.glide(%g, %g)", at.X, at.Y), nil)
 }
@@ -195,7 +102,7 @@ func choose(target, label string) action {
 			return "", err
 		}
 		if problem != "" {
-			return "", Failed{problem}
+			return "", film.Failed{Msg: problem}
 		}
 		return fmt.Sprintf("chose %q in %s", label, at.What), nil
 	}
@@ -208,7 +115,7 @@ func (p *page) missing(target string) error {
 	if list, err := p.targets(); err == nil && list != "" {
 		msg += "; the page's targets:\n" + list
 	}
-	return Failed{msg}
+	return film.Failed{Msg: msg}
 }
 
 // typeInto clicks target, then types text at human pace, each character a
@@ -313,7 +220,7 @@ func appear(target string, timeout time.Duration) action {
 				return "found " + *seen, nil
 			}
 			if time.Now().After(deadline) {
-				return "", Failed{fmt.Sprintf("%s did not appear within %s", target, timeout)}
+				return "", film.Failed{Msg: fmt.Sprintf("%s did not appear within %s", target, timeout)}
 			}
 			time.Sleep(100 * time.Millisecond)
 		}
