@@ -253,22 +253,30 @@
     },
 
     // caretToEnd puts the focused field's caret after its text, or with
-    // all, selects the text so typing replaces it.
+    // all, selects the text so typing replaces it. It returns false when
+    // the field offers no way to place the caret, as email and number
+    // fields do not, and the End key has to.
     caretToEnd: (all) => {
       const el = document.activeElement;
-      if (!el) return;
+      if (!el) return true;
       if (el.isContentEditable) {
         const range = document.createRange();
         range.selectNodeContents(el);
         if (!all) range.collapse(false);
         getSelection().removeAllRanges();
         getSelection().addRange(range);
-        return;
+        return true;
+      }
+      if (all && el.select) {
+        el.select();
+        return true;
       }
       try {
-        if (all) el.select();
-        else el.setSelectionRange(el.value.length, el.value.length);
-      } catch (e) {} // email and number fields have no caret to place
+        el.setSelectionRange(el.value.length, el.value.length);
+        return true;
+      } catch (e) {
+        return false;
+      }
     },
 
     // choose picks the option labelled label in the select target, as
@@ -278,7 +286,7 @@
       if (!el || el.tagName !== "SELECT") return `${target} is not a select`;
       const option = [...el.options].find((o) => low(o.text) === low(label));
       if (!option) return `${describe(el)} has no option ${label}; its options: ${[...el.options].map((o) => norm(o.text)).join(", ")}`;
-      el.value = option.value;
+      option.selected = true; // not el.value: options may share a value
       el.dispatchEvent(new Event("input", { bubbles: true }));
       el.dispatchEvent(new Event("change", { bubbles: true }));
       return "";

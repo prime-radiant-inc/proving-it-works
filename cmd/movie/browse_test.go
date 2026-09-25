@@ -318,6 +318,21 @@ func TestBrowseFilmOffLeavesActionsOutOfTheMovie(t *testing.T) {
 	}
 }
 
+// A beat's pending cut is spent by filming off and on again, which starts a
+// new take itself; it must not cut once more and leave an empty take.
+func TestBrowseFilmOnSpendsAPendingCut(t *testing.T) {
+	dir := t.TempDir()
+	url := serveApp(t, map[string]string{"/": todoApp})
+	session := startBrowse(t, dir, url)
+	mustBrowse(t, dir, "type", session, "#item", "one", "--say", "One.")
+	mustBrowse(t, dir, "film", session, "off")
+	mustBrowse(t, dir, "film", session, "on")
+	mustBrowse(t, dir, "click", session, "text=Add")
+	if r := mustBrowse(t, dir, "stop", session, filepath.Join(dir, "takes")); !strings.Contains(r.stdout, "2 takes") {
+		t.Fatalf("want 2 takes:\n%s", r.stdout)
+	}
+}
+
 func samePicture(a, b image.Image) bool {
 	if a.Bounds() != b.Bounds() {
 		return false
@@ -356,7 +371,9 @@ const trickyPage = `<!doctype html><title>Tricky</title>
 <div id="modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4)">
   <div style="background:#fff;margin:100px;padding:20px">Really? <button id="msave" onclick="modal.style.display='none';state.textContent='Saved'">Save</button></div>
 </div>
-<a href="#/about">About</a>
+<a href="#/about">About</a><br>
+<select id="alias"><option value="x">A</option><option value="x">B</option></select>
+<input id="email" type="email" value="alice.long.address@example.com" style="width:200px">
 <div style="height:3000px"></div>
 <button id="later" onclick="setTimeout(()=>{far.style.display='block'},300)">Show far</button>
 <div id="far" style="display:none;width:400px;height:200px;background:#ff00ff">Far away</div>
@@ -390,9 +407,11 @@ func TestBrowseTargetsAreTheOnesAPersonMeans(t *testing.T) {
 		t.Errorf("type should append, and page should show field values:\n%s", r.stdout)
 	}
 	mustBrowse(t, dir, "type", session, "#name", "Ada", "--replace")
+	mustBrowse(t, dir, "type", session, "#email", ".au")
 	mustBrowse(t, dir, "choose", session, "#size", "Three")
+	mustBrowse(t, dir, "choose", session, "#alias", "B")
 	r := mustBrowse(t, dir, "page", session)
-	for _, want := range []string{`= "Ada"`, `= "Three"`} {
+	for _, want := range []string{`= "Ada"`, `= "alice.long.address@example.com.au"`, `= "Three"`, `= "B"`} {
 		if !strings.Contains(r.stdout, want) {
 			t.Errorf("page lacks %s:\n%s", want, r.stdout)
 		}

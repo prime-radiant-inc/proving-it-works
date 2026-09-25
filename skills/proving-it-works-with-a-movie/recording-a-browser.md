@@ -64,7 +64,7 @@ action's: a `wait` that times out leaves nothing in the movie.
 | `click SESSION TARGET` | glide the cursor to TARGET and click it | 0, 1 missing or covered |
 | `type SESSION TARGET 'text' [--replace]` | click TARGET, then type after what it holds, or over it with `--replace`; a newline presses Enter | 0, 1 |
 | `choose SESSION TARGET 'Option'` | pick the option labelled Option in the select TARGET | 0, 1 |
-| `press SESSION KEY` | `Enter`, `Tab`, `Escape`, `Backspace`, `Delete`, `Up`, `Down`, `Left`, `Right`, or one character | 0 |
+| `press SESSION KEY` | `Enter`, `Tab`, `Escape`, `Backspace`, `Delete`, `Home`, `End`, `Up`, `Down`, `Left`, `Right`, or one character | 0 |
 | `wait SESSION TARGET [--timeout 10]` | wait until TARGET is visible, and scroll it into view | 0, 1 timed out |
 | `page SESSION` | print the URL, title, visible text, and targets | 0 |
 | `cut SESSION` | end this take, holding its result, and start the next (`--say` does this for you) | 0 |

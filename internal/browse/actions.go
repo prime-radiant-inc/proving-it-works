@@ -98,7 +98,9 @@ func (s *Session) setFilm(st *state, on bool) error {
 		return nil
 	}
 	if on {
+		// a new take starts here, which is all a pending cut would do
 		st.Take++
+		st.CutPending = false
 	}
 	st.Film = on
 	if err := s.mark(on, false); err != nil {
@@ -219,8 +221,14 @@ func typeInto(target, text string, replace bool) action {
 			return "", err
 		}
 		// the click put the caret wherever it landed
-		if err := p.eval(fmt.Sprintf("__movie.caretToEnd(%t)", replace), nil); err != nil {
+		var placed bool
+		if err := p.eval(fmt.Sprintf("__movie.caretToEnd(%t)", replace), &placed); err != nil {
 			return "", err
+		}
+		if !placed {
+			if err := p.press(keys["End"]); err != nil {
+				return "", err
+			}
 		}
 		pace := film.TypingPace(len([]rune(text)))
 		for _, r := range text {
@@ -251,6 +259,8 @@ var keys = map[string]key{
 	"Escape":    {"Escape", "Escape", 27, ""},
 	"Backspace": {"Backspace", "Backspace", 8, ""},
 	"Delete":    {"Delete", "Delete", 46, ""},
+	"Home":      {"Home", "Home", 36, ""},
+	"End":       {"End", "End", 35, ""},
 	"Up":        {"ArrowUp", "ArrowUp", 38, ""},
 	"Down":      {"ArrowDown", "ArrowDown", 40, ""},
 	"Left":      {"ArrowLeft", "ArrowLeft", 37, ""},
@@ -265,7 +275,7 @@ func keyNamed(name string) (key, error) {
 	if len([]rune(name)) == 1 {
 		return key{Key: name, Text: name}, nil
 	}
-	return key{}, fmt.Errorf("unknown key %q: use Enter, Tab, Escape, Backspace, Delete, Up, Down, Left, Right, or one character", name)
+	return key{}, fmt.Errorf("unknown key %q: use Enter, Tab, Escape, Backspace, Delete, Home, End, Up, Down, Left, Right, or one character", name)
 }
 
 func (p *page) press(k key) error {

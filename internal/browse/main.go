@@ -22,7 +22,7 @@ const usage = `usage: movie browse VERB SESSION ...
         click TARGET, then type at human pace after what it holds, or over it with --replace
   choose SESSION TARGET 'Option' [--say "narration"]
         pick the option labelled Option in the select TARGET
-  press SESSION Enter|Tab|Escape|Backspace|Delete|Up|Down|Left|Right|<one character> [--say "narration"]
+  press SESSION Enter|Tab|Escape|Backspace|Delete|Home|End|Up|Down|Left|Right|<one character> [--say "narration"]
         press one key
   wait SESSION TARGET [--timeout 10] [--say "narration"]
         wait until TARGET is visible, and scroll it into view

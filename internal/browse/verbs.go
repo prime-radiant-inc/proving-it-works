@@ -63,13 +63,15 @@ func Start(dir, url string, o StartOptions, stdout io.Writer) (err error) {
 	if err != nil {
 		return err
 	}
+	spawned := false
 	defer func() {
 		if err != nil {
 			b.Kill()
-			// the recorder, if it started, notices and writes its last lines
-			waitFor(5*time.Second, func() bool {
-				return !hasContent(filepath.Join(abs, "frames.jsonl")) || exists(filepath.Join(abs, "recorder.done"))
-			})
+			// The recorder notices, and writes its last lines and
+			// recorder.done; the directory is cleared only after that.
+			if spawned {
+				waitFor(5*time.Second, func() bool { return exists(filepath.Join(abs, "recorder.done")) })
+			}
 		}
 	}()
 	s := &Session{Dir: abs, Browser: *b, Title: o.Title, Subtitle: o.Subtitle}
@@ -99,6 +101,7 @@ func Start(dir, url string, o StartOptions, stdout io.Writer) (err error) {
 	if err := cli.SpawnDetached(filepath.Join(abs, "recorder.log"), "browse", "_record", abs); err != nil {
 		return err
 	}
+	spawned = true
 	if !waitFor(10*time.Second, func() bool { return hasContent(filepath.Join(abs, "frames.jsonl")) }) {
 		return fmt.Errorf("the recorder did not start; see %s", filepath.Join(abs, "recorder.log"))
 	}

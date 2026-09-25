@@ -315,7 +315,7 @@ the escape hatch for drag and drop, uploads, iframes, and complex logins.
 | `click SESSION TARGET [--say S]` | glide the cursor to TARGET and click it | 0, 1 not found or covered |
 | `type SESSION TARGET 'text' [--replace] [--say S]` | click TARGET, then type at human pace after its text, or over it | 0, 1 |
 | `choose SESSION TARGET 'Option' [--say S]` | pick an option in a select (headless Chrome draws no popup, so this sets it and fires input and change) | 0, 1 |
-| `press SESSION KEY [--say S]` | `Enter`, `Tab`, `Escape`, `Backspace`, `Up`, `Down`, `Left`, `Right`, or one character | 0 |
+| `press SESSION KEY [--say S]` | `Enter`, `Tab`, `Escape`, `Backspace`, `Delete`, `Home`, `End`, `Up`, `Down`, `Left`, `Right`, or one character | 0 |
 | `wait SESSION TARGET [--timeout 10] [--say S]` | wait until TARGET is visible, then scroll it into view | 0, 1 timed out |
 | `page SESSION` | print the URL, title, visible text, and the targets on the page | 0 |
 | `cut SESSION`, `film SESSION on\|off` | as in `term` | 0 |
