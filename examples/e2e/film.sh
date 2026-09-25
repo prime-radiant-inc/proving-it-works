@@ -39,7 +39,7 @@ start "$work/install"
 stop "$work/install" "$here/install"
 
 start "$work/agent"
-"$movie" term run "$work/agent" 'claude --permission-mode bypassPermissions -p "Use the proving-it-works-with-a-movie skill. Make a ~12s NARRATED movie proving /work/app/index.html counts 0 to 1 to 2 when clicked. Motion route: record continuous frames from headless chromium with the cursor overlay drawn. No API key here, so narrate with the local engine. Build it with movie build and check it. Save to /work/out/counter.mp4."' --timeout 20 || true
+"$movie" term run "$work/agent" 'claude --permission-mode bypassPermissions -p "Use the proving-it-works-with-a-movie skill. Make a ~12s NARRATED movie proving /work/app/index.html counts 0 to 1 to 2 when clicked. Film the clicks with movie browse. No API key here, so narrate with the local engine. Build it with movie build and check it. Save to /work/out/counter.mp4."' --timeout 20 || true
 "$movie" term film "$work/agent" off
 "$movie" term wait "$work/agent" --timeout 1800
 stop "$work/agent" "$here/agent"

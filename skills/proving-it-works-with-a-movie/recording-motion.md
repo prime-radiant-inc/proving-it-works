@@ -1,7 +1,10 @@
-# Recording motion from a live app
+# Recording motion yourself
 
-For when the interaction itself is the claim. Drive a real browser against a
-real running instance; every pixel is the product.
+For a web app, start with `movie browse` (recording-a-browser.md). It
+draws the cursor, paces the typing, cuts the waiting, and writes the scene
+file. This file is for what it cannot do: drag and drop, uploads, iframes,
+multi-tab flows, and complex logins, where you drive Chrome yourself with
+Playwright or raw CDP, and for capturing a desktop app's window.
 
 ## Record against a copy, always
 
@@ -67,21 +70,8 @@ Anything else silently produces mangled input on camera.
 
 ## When the correct behavior is invisible
 
-Some claims are proven by *nothing changing*: state survives a reload,
-a retry is idempotent, a cache returns the same answer. Filmed naively, the
-before and after frames are pixel-identical and the movie shows nothing at
-all — a viewer cannot tell the reload happened, and the mechanical gate will
-correctly report a picture that stopped moving.
-
-Stage a visible marker of **the event**, not the effect: navigate to
-`about:blank` and back rather than reloading in place, so there is a real
-teardown and a genuinely blank beat on camera, then the restored state.
-Same for a restart — show the process dying.
-
-Hold that marker beat for **more than one second**. `movie check` samples the
-picture at 1 Hz; a 600ms blank falls between two samples and is invisible to
-the gate even though it is real. Anything you want the checker (or a viewer)
-to register needs ~1.3s or more.
+Film the event, not the effect, and hold it more than a second:
+recording-a-browser.md explains.
 
 ## Screenshot-based capture: navigation orphans an in-flight capture
 

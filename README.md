@@ -40,7 +40,7 @@ A skill, `proving-it-works-with-a-movie`, that covers five routes:
 
 | Route | For |
 |---|---|
-| Browser-driven motion | The interaction is the claim: typing, clicking, live updates |
+| Browser | A web app in use: typing, clicking, live updates (`movie browse`) |
 | Desktop window | A desktop app's window, captured with ffmpeg (recording-motion.md) |
 | Terminal | A CLI, a TUI, an install, a test run, an agent working |
 | Stills | A sequence of real states, motion optional |
@@ -53,7 +53,8 @@ recording against a copy of your data rather than the real thing.
 ### The tool
 
 One binary, `bin/movie`, prebuilt for macOS, Linux, and Windows. It needs
-ffmpeg; `movie term` also needs tmux, and the keyless local voice needs
+ffmpeg; `movie term` also needs tmux, `movie browse` needs Chrome, Chromium,
+or Edge, and the keyless local voice needs
 Piper (see Requirements):
 
 | Command | Does |
@@ -61,6 +62,7 @@ Piper (see Requirements):
 | `movie build scenes.yaml movie.mp4` | narrates (a cloud voice with a key, a local one without), assembles each scene to max(narration, visuals), writes and burns subtitles, and runs the gate |
 | `movie check movie.mp4` | the gate, alone |
 | `movie term ...` | films a terminal session, one narrated beat per `--say`, and writes the scene file |
+| `movie browse ...` | films a web app driven in headless Chrome, with a drawn cursor, one narrated beat per `--say`, and writes the scene file |
 
 ### `movie check`
 
@@ -121,7 +123,7 @@ It runs on every harness below; each one reads the same skill from `skills/`.
 
 - `ffmpeg` and `ffprobe`
 - For the keyless voice: Piper (`uv tool install piper-tts`), see the skill's `narrating.md`
-- For the browser routes: Chrome plus a driver (Playwright or raw CDP)
+- For filming web apps: Chrome, Chromium, or Edge (Playwright only for what `movie browse` cannot drive)
 - tmux, for filming terminals
 
 ## Tests

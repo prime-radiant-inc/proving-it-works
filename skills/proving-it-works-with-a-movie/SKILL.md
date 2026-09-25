@@ -18,7 +18,8 @@ movie.** Not the frames going in. The finished file coming out.
 
 | What you have to show | Route |
 |---|---|
-| Interaction happening: typing, clicking, a list updating live | Drive a browser and capture frames → recording-motion.md |
+| A web app in use: typing, clicking, a list updating live | `movie browse` → recording-a-browser.md |
+| Drag and drop, uploads, iframes, complex logins | Drive the browser yourself → recording-motion.md |
 | A desktop app's window | Capture the window with ffmpeg → recording-motion.md |
 | A CLI, a TUI, an install, a test run, an agent working | `movie term` → recording-a-terminal.md |
 | A sequence of real states, motion optional | Screenshots as `image` scenes → rendering-stills.md |
@@ -82,11 +83,11 @@ frame, a transition) has to be held longer than a second. Then:
 | Narrator talks over a picture that stopped moving | Sleeps guessed against narration nobody measured |
 | A word missing from the narration | Local TTS drops out-of-vocabulary terms with no error |
 | "Sure, here it is:" spoken aloud | Chat-model TTS ad-libs; it is not a TTS endpoint |
-| Clicks that appear to happen by themselves | Automation draws no cursor |
+| Clicks that appear to happen by themselves | Automation draws no cursor (`movie browse` draws one) |
 | Wallpaper, or a blank window | OS screen-recording permission denied; capture "succeeds" |
 | A scene missing, error naming a truncated file | `ffmpeg` ate the loop's stdin (`-nostdin`) |
 | Your real data mutated | You recorded against the live tree; the movie writes |
-| Nothing visibly happens, because nothing visibly *should* | The claim is "state survived" — film the event, not the effect (recording-motion.md) |
+| Nothing visibly happens, because nothing visibly *should* | The claim is "state survived" — film the event, not the effect (recording-a-browser.md) |
 | A muted viewer gets nothing | Narration without subtitles. `movie build` writes and burns them |
 
 ## Red flags — stop
