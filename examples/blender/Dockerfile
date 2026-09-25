@@ -3,7 +3,7 @@
 FROM debian:trixie
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      blender xvfb ffmpeg libgl1-mesa-dri python3 procps
+      blender xvfb xdotool ffmpeg libgl1-mesa-dri python3 procps
 
 ENV DISPLAY=:99
 WORKDIR /work
