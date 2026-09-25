@@ -22,10 +22,12 @@ That is the whole route. `run` types a command at human pace, waits for
 the prompt, and prints the command's exit code and output, so you see what
 happened without looking at a frame.
 
-**`--say` is how you narrate.** It starts a new beat with that command, and
-the sentence narrates that beat. Commands without `--say` join the current
-beat, as `add write the report` does above. Say what the beat proves ("the
-tests pass"), not what is being typed.
+**`--say` is how you narrate.** It ends a beat: the sentence narrates
+everything since the previous `--say`, and plays over this command's
+result. So do the work, then say what it proved: above, `add write the
+report` runs unnarrated and `done 1 --say "Add a second, and mark the first
+one done."` narrates both. Say what the beat proves ("the tests pass"), not
+what is being typed.
 
 **`stop` writes the scene file.** `scenes.yaml` beside the takes holds the
 title card (from `start --title`), then one scene per beat with its
@@ -48,7 +50,7 @@ the movie. `screen` prints what is on screen right now, for driving a TUI.
 | `key SESSION NAME` | `Enter`, `Escape`, `Tab`, `Up`, `Down`, `Left`, `Right`, `C-c`, or one character | 0 |
 | `wait SESSION [--quiet S] [--timeout 60]` | wait for the prompt (0 or 1), or for the screen to hold still for S seconds (3, still running) | |
 | `screen SESSION` | print the screen as text | 0 |
-| `cut SESSION` | end this take, holding its result, and start the next (`--say` does this for you) | 0 |
+| `cut SESSION` | end this take, holding its result, and start the next (`run --say` does this for you) | 0 |
 | `film SESSION on\|off` | keep what follows out of the movie; each `on` starts a new take | 0 |
 | `stop SESSION OUTDIR [--px 1600x900]` | end the session, render every take, and write `OUTDIR/scenes.yaml` | 0 |
 | `render SESSION OUTDIR [--px 1600x900]` | render again from the recording, even after the session is gone | 0 |

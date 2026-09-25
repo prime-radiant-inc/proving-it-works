@@ -505,6 +505,16 @@ func TestSayWritesAReadySceneFile(t *testing.T) {
 	if two.Narration != "Then: two." || !two.NarrationAtEnd {
 		t.Errorf("second take scene %+v", two)
 	}
+	// --say ends its beat: "echo extra", run after the first beat was
+	// narrated, belongs to the second beat, the one "Then: two." narrates
+	takes := term.Takes(readEntries(t, session))
+	if len(takes) != 2 {
+		t.Fatalf("got %d takes, want 2 (no empty take after the last --say)", len(takes))
+	}
+	last := func(tk term.Take) string { return tk.Entries[len(tk.Entries)-1].Screen }
+	if strings.Contains(last(takes[0]), "echo extra") || !strings.Contains(last(takes[1]), "echo extra") {
+		t.Errorf("echo extra should open the second beat:\ntake 1 ends:\n%s\ntake 2 ends:\n%s", last(takes[0]), last(takes[1]))
+	}
 }
 
 func TestTheWrittenSceneFileBuilds(t *testing.T) {

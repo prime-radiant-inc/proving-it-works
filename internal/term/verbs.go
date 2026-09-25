@@ -95,7 +95,7 @@ func Start(dir string, o StartOptions, stdout io.Writer) (err error) {
 	if _, err := s.waitFor(10*time.Second, func(st Status) bool { return st.Seq >= 2 }); err != nil {
 		return fmt.Errorf("the shell did not clear: %w", err)
 	}
-	if err := s.markFresh(); err != nil {
+	if err := s.startBeats(); err != nil {
 		return err
 	}
 	if err := s.save(); err != nil {
@@ -151,8 +151,7 @@ func (s *Session) send(text string, keys ...string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := s.tmux("set-option", "-t", window, "@movie_sent", strconv.Itoa(st.Seq), ";",
-		"set-option", "-t", window, freshOption, "0"); err != nil {
+	if _, err := s.tmux("set-option", "-t", window, "@movie_sent", strconv.Itoa(st.Seq)); err != nil {
 		return err
 	}
 	if err := s.typeText(text); err != nil {
@@ -171,11 +170,19 @@ func (s *Session) send(text string, keys ...string) error {
 }
 
 // TypeText types into whatever is running, with no prompt check.
-func TypeText(s *Session, text string) error { return s.send(text) }
+func TypeText(s *Session, text string) error {
+	if err := s.cutIfPending(); err != nil {
+		return err
+	}
+	return s.send(text)
+}
 
 // PressKey presses one key.
 func PressKey(s *Session, name string) error {
 	if _, err := keyArgs(name); err != nil {
+		return err
+	}
+	if err := s.cutIfPending(); err != nil {
 		return err
 	}
 	return s.send("", name)
@@ -222,9 +229,7 @@ func SetFilm(s *Session, on bool) error {
 			return err
 		}
 		take, _ := strconv.Atoi(strings.TrimSpace(number))
-		// a take that has just started has had no input yet
 		_, err = s.tmux("set-option", "-t", window, "@movie_film", "on", ";",
-			"set-option", "-t", window, freshOption, "1", ";",
 			"set-option", "-t", window, takeOption, strconv.Itoa(take+1))
 		return err
 	}
@@ -263,8 +268,8 @@ type Outcome struct {
 
 // RunCommand types command at a prompt, presses Enter, and waits for the
 // next prompt.
-// With say, the command starts a new narrated beat: the current take is cut
-// unless nothing has run in it yet, and say becomes the new take's narration.
+// With say, the command ends a narrated beat: say narrates everything filmed
+// since the previous beat ended, and the next input starts a new take.
 func RunCommand(s *Session, command, say string, timeout time.Duration, stdout io.Writer) (int, error) {
 	st, err := s.status(false)
 	if err != nil {
@@ -273,11 +278,14 @@ func RunCommand(s *Session, command, say string, timeout time.Duration, stdout i
 	if !st.AtPrompt() {
 		return exitcode.Usage, fmt.Errorf("the shell is not at a prompt (%s is running): use wait, or key C-c", st.Command)
 	}
+	if err := s.cutIfPending(); err != nil {
+		return exitcode.Usage, err
+	}
+	if st, err = s.status(false); err != nil {
+		return exitcode.Usage, err
+	}
 	if say != "" {
-		if err := s.beginBeat(say); err != nil {
-			return exitcode.Usage, err
-		}
-		if st, err = s.status(false); err != nil {
+		if err := s.narrate(say); err != nil {
 			return exitcode.Usage, err
 		}
 	}
@@ -287,7 +295,14 @@ func RunCommand(s *Session, command, say string, timeout time.Duration, stdout i
 	if err := s.send(command, "Enter"); err != nil {
 		return exitcode.Usage, err
 	}
-	return s.await(timeout, 0, from, stdout)
+	code, err := s.await(timeout, 0, from, stdout)
+	if err == nil && say != "" {
+		// this beat is over; the next input starts the next take
+		if _, err := s.tmux("set-option", "-t", window, cutOption, "1"); err != nil {
+			return exitcode.Usage, err
+		}
+	}
+	return code, err
 }
 
 // await waits for the next prompt, for the screen to stay unchanged for
@@ -381,33 +396,23 @@ func Stop(s *Session, outdir string, px image.Point, stdout io.Writer) error {
 	return Render(s.Dir, outdir, px, stdout)
 }
 
-// freshOption is set while the current take has had no input yet, so a
-// narrated beat starting there needs no cut of its own. takeOption numbers
-// the current take: 1 at start, one more each time filming turns back on.
+// takeOption numbers the current take: 1 at start, one more each time
+// filming turns back on. cutOption is set after a narrated command (run
+// --say) ends its beat; the next input cuts to a new take before it is
+// typed, so a beat ends on its result and no empty take trails the last one.
 const (
-	freshOption = "@movie_fresh"
-	takeOption  = "@movie_take"
+	takeOption = "@movie_take"
+	cutOption  = "@movie_cut_pending"
 )
 
-func (s *Session) markFresh() error {
-	_, err := s.tmux("set-option", "-t", window, freshOption, "1", ";",
-		"set-option", "-t", window, takeOption, "1")
+func (s *Session) startBeats() error {
+	_, err := s.tmux("set-option", "-t", window, takeOption, "1", ";",
+		"set-option", "-t", window, cutOption, "0")
 	return err
 }
 
-// beginBeat starts a narrated beat: it cuts to a new take unless the current
-// one is still fresh, then records say with the time, so rendering can give
-// the sentence to the take it was spoken in.
-func (s *Session) beginBeat(say string) error {
-	fresh, err := s.tmux("display-message", "-p", "-t", window, "#{"+freshOption+"}")
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(fresh) != "1" {
-		if err := Cut(s); err != nil {
-			return err
-		}
-	}
+// narrate records say as the narration of the current take's beat.
+func (s *Session) narrate(say string) error {
 	number, err := s.tmux("display-message", "-p", "-t", window, "#{"+takeOption+"}")
 	if err != nil {
 		return err
@@ -422,6 +427,19 @@ func (s *Session) beginBeat(say string) error {
 	}
 	defer f.Close()
 	return json.NewEncoder(f).Encode(Beat{Take: take, Say: say})
+}
+
+// cutIfPending starts a new take when the previous command ended a beat.
+func (s *Session) cutIfPending() error {
+	pending, err := s.tmux("display-message", "-p", "-t", window, "#{"+cutOption+"}")
+	if err != nil || strings.TrimSpace(pending) != "1" {
+		return err
+	}
+	if err := Cut(s); err != nil {
+		return err
+	}
+	_, err = s.tmux("set-option", "-t", window, cutOption, "0")
+	return err
 }
 
 // Cut ends the current take, holding its last screen as film off does, and

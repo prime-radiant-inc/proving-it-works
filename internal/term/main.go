@@ -18,7 +18,7 @@ const usage = `usage: movie term VERB SESSION ...
         start a clean bash in a private tmux server, filming; returns when ready
   run SESSION 'cmd' [--say "narration"] [--timeout 60]
         type a command at a prompt and wait for it; prints its exit code and output;
-        --say starts a new beat, narrated by that sentence
+        --say ends a beat: the sentence narrates it, over this command's result
   type SESSION 'text'
         type into whatever is running, such as a TUI's input box
   key SESSION Enter|Escape|Tab|Up|Down|Left|Right|C-c|<one character>
@@ -84,7 +84,7 @@ func dispatch(verb string, args []string, stdout, stderr io.Writer) (int, error)
 			Title: *title, Subtitle: *subtitle}, stdout)
 	case "run":
 		timeout := fs.Float64("timeout", 60, "seconds to wait for the next prompt")
-		say := fs.String("say", "", "narration for a new beat that starts with this command")
+		say := fs.String("say", "", "narration for the beat this command ends")
 		pos, err := cli.Parse(fs, args)
 		if err != nil || len(pos) != 2 {
 			return exitcode.Usage, fmt.Errorf("needs SESSION and a command")
