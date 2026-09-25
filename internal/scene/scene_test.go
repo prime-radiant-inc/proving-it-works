@@ -116,3 +116,30 @@ func TestCardTextTheFontCannotDrawIsRejected(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+// A take directory from `movie term stop` carries its own frame rate in
+// take.json; a frames scene uses it unless the scene file says otherwise.
+func TestFramesSceneTakesItsRateFromTakeJSON(t *testing.T) {
+	path := fixture(t, "fps: 30\nscenes:\n  - id: take\n    frames: frames\n  - id: fast\n    frames: frames\n    rate: 25\n")
+	os.WriteFile(filepath.Join(filepath.Dir(path), "frames", "take.json"), []byte(`{"frames": "/elsewhere", "rate": 10}`), 0o644)
+	f, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Scenes[0].Rate != 10 {
+		t.Errorf("take.json rate not used: got %v", f.Scenes[0].Rate)
+	}
+	if f.Scenes[1].Rate != 25 {
+		t.Errorf("an explicit rate must win: got %v", f.Scenes[1].Rate)
+	}
+}
+
+func TestUnreadableTakeJSONIsAProblem(t *testing.T) {
+	path := fixture(t, "scenes:\n  - id: take\n    frames: frames\n")
+	os.WriteFile(filepath.Join(filepath.Dir(path), "frames", "take.json"), []byte(`{"rate": "fast"}`), 0o644)
+	_, err := Load(path)
+	var p Problems
+	if !errors.As(err, &p) || !strings.Contains(strings.Join(p, "\n"), "take.json") {
+		t.Fatalf("got %v", err)
+	}
+}

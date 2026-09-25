@@ -2,6 +2,8 @@
 package scene
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -235,7 +237,15 @@ func parseScene(f *File, index int, item any) (Scene, Problems) {
 		if sc.Source = source("frames"); sc.Source != "" && len(PNGs(sc.Source)) == 0 {
 			p = append(p, fmt.Sprintf("%s: no PNG frames in %s", name, sc.Source))
 		}
-		sc.Rate = positive("rate", float64(f.FPS))
+		rate := float64(f.FPS)
+		if sc.Source != "" {
+			if takeRate, err := takeJSONRate(sc.Source); err != nil {
+				p = append(p, fmt.Sprintf("%s: %v", name, err))
+			} else if takeRate > 0 {
+				rate = takeRate
+			}
+		}
+		sc.Rate = positive("rate", rate)
 	case Movie:
 		if sc.Source = source("movie"); sc.Source != "" && !isFile(sc.Source) {
 			p = append(p, fmt.Sprintf("%s: no such movie %s", name, sc.Source))
@@ -247,6 +257,25 @@ func parseScene(f *File, index int, item any) (Scene, Problems) {
 		}
 	}
 	return sc, p
+}
+
+// takeJSONRate reads the frame rate `movie term` records in a take
+// directory's take.json. It returns 0 when there is no take.json.
+func takeJSONRate(dir string) (float64, error) {
+	data, err := os.ReadFile(filepath.Join(dir, "take.json"))
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	var take struct {
+		Rate float64 `json:"rate"`
+	}
+	if err := json.Unmarshal(data, &take); err != nil || !(take.Rate > 0) {
+		return 0, fmt.Errorf("unreadable take.json in %s: it needs a positive rate", dir)
+	}
+	return take.Rate, nil
 }
 
 // PNGs lists the PNG files in dir in lexical order. It reads the directory
