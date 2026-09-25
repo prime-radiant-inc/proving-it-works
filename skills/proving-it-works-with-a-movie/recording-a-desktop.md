@@ -26,6 +26,13 @@ late, and buttons ignore clicks until the pointer has settled, so never
 fire a sequence of clicks blind. What worked can become a script later, if
 the movie needs to be rerun.
 
+**Look before you narrate.** Take a `shot` and see the result before an
+action's `--say` claims it. An app can hold still and then change: a
+software-rendered preview, a dialog, or a file load can land seconds after
+the click, after the verb has already settled. A `wait --quiet 3` gives slow
+apps room. A result that shows up late also means the click worked; a
+second click on a toggle can undo it.
+
 **Coordinates are pixels of what is filmed**: read a point off the shot
 and click it. With `--window NAME`, only that window's area is filmed and
 the coordinates are relative to it; without it, the whole display is
