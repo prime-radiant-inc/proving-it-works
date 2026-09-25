@@ -67,7 +67,9 @@ func Start(dir, url string, o StartOptions, stdout io.Writer) (err error) {
 		if err != nil {
 			b.Kill()
 			// the recorder, if it started, notices and writes its last lines
-			waitFor(5*time.Second, func() bool { return !hasContent(filepath.Join(abs, "frames.jsonl")) || exists(filepath.Join(abs, "recorder.done")) })
+			waitFor(5*time.Second, func() bool {
+				return !hasContent(filepath.Join(abs, "frames.jsonl")) || exists(filepath.Join(abs, "recorder.done"))
+			})
 		}
 	}()
 	s := &Session{Dir: abs, Browser: *b, Title: o.Title, Subtitle: o.Subtitle}
