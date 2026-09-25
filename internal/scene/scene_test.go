@@ -94,7 +94,7 @@ scenes:
 		"fps must be a positive whole number",
 		`engine must be one of auto, openai, openai-chat, piper`,
 		`unknown top-level key "colour"`,
-		"scene 1: id must match",
+		`scene 1: id "Bad_ID" must match`,
 		"scene two: needs exactly one of card, image, frames, movie (found 2)",
 		"scene none: needs exactly one of card, image, frames, movie (found 0)",
 		"scene dup: no such image",
@@ -171,5 +171,20 @@ func TestFramesSceneReadsWhenTheTakeSettled(t *testing.T) {
 	}
 	if f.Scenes[0].Settled != 2.5 {
 		t.Fatalf("settled %v, want 2.5", f.Scenes[0].Settled)
+	}
+}
+
+func TestProblemsNameTheBadValueAndSuggestTheField(t *testing.T) {
+	_, err := Load(fixture(t, "scnes: []\nscenes:\n  - id: Title\n    card: hi\n    narations: oops\n  - card: x\n"))
+	all := fmt.Sprint(err)
+	for _, want := range []string{
+		`unknown top-level key "scnes" (did you mean "scenes"?)`,
+		`scene 1: id "Title" must match [a-z0-9][a-z0-9-]*`,
+		`scene 1: "narations" is not a field of a card scene (did you mean "narration"?)`,
+		`scene 2: needs an id`,
+	} {
+		if !strings.Contains(all, want) {
+			t.Errorf("missing %q in:\n%s", want, all)
+		}
 	}
 }

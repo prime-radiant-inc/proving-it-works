@@ -51,7 +51,7 @@ func Load(dir string) (*Session, error) {
 	}
 	data, err := os.ReadFile(filepath.Join(abs, "session.json"))
 	if err != nil {
-		return nil, fmt.Errorf("%s is not a movie term session: %w", dir, err)
+		return nil, fmt.Errorf("no movie term session at %s (start one with: movie term start %s)", dir, dir)
 	}
 	var s Session
 	if err := json.Unmarshal(data, &s); err != nil {

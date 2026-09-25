@@ -106,7 +106,7 @@ func Load(path string) (*File, error) {
 	var p Problems
 	for _, k := range sortedKeys(raw) {
 		if !topKeys[k] {
-			p = append(p, fmt.Sprintf("unknown top-level key %q", k))
+			p = append(p, fmt.Sprintf("unknown top-level key %q%s", k, suggest(k, topKeys)))
 		}
 	}
 	if v, ok := raw["size"]; ok {
@@ -173,10 +173,13 @@ func parseScene(f *File, index int, item any) (Scene, Problems) {
 	}
 	var p Problems
 	var sc Scene
-	if id, ok := m["id"].(string); ok && idPattern.MatchString(id) {
+	switch id, isStr := m["id"].(string); {
+	case m["id"] == nil:
+		p = append(p, name+": needs an id matching [a-z0-9][a-z0-9-]*")
+	case isStr && idPattern.MatchString(id):
 		sc.ID, name = id, "scene "+id
-	} else {
-		p = append(p, name+": id must match [a-z0-9][a-z0-9-]*")
+	default:
+		p = append(p, fmt.Sprintf("%s: id %q must match [a-z0-9][a-z0-9-]*", name, fmt.Sprint(m["id"])))
 	}
 	var found []Kind
 	for _, k := range kinds {
@@ -190,7 +193,7 @@ func parseScene(f *File, index int, item any) (Scene, Problems) {
 	sc.Kind = found[0]
 	for _, k := range sortedKeys(m) {
 		if !kindKeys[sc.Kind][k] {
-			p = append(p, fmt.Sprintf("%s: %q is not a field of a %s scene", name, k, sc.Kind))
+			p = append(p, fmt.Sprintf("%s: %q is not a field of a %s scene%s", name, k, sc.Kind, suggest(k, kindKeys[sc.Kind])))
 		}
 	}
 	text := func(key string) (string, bool) {
@@ -272,6 +275,50 @@ func parseScene(f *File, index int, item any) (Scene, Problems) {
 		}
 	}
 	return sc, p
+}
+
+// suggest names the valid key closest to a misspelled one, as
+// ` (did you mean "narration"?)`, or returns "" when nothing is close.
+func suggest(key string, valid map[string]bool) string {
+	best, bestDistance := "", 3 // more than two edits away is not a typo
+	for _, v := range sortedKeys(anyKeys(valid)) {
+		if d := editDistance(key, v); d < bestDistance {
+			best, bestDistance = v, d
+		}
+	}
+	if best == "" {
+		return ""
+	}
+	return fmt.Sprintf(" (did you mean %q?)", best)
+}
+
+func anyKeys(m map[string]bool) map[string]any {
+	out := make(map[string]any, len(m))
+	for k := range m {
+		out[k] = nil
+	}
+	return out
+}
+
+// editDistance is the Levenshtein distance between a and b.
+func editDistance(a, b string) int {
+	prev := make([]int, len(b)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= len(a); i++ {
+		cur := make([]int, len(b)+1)
+		cur[0] = i
+		for j := 1; j <= len(b); j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			cur[j] = min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost)
+		}
+		prev = cur
+	}
+	return prev[len(b)]
 }
 
 // take is what `movie term` records about a take in its take.json.

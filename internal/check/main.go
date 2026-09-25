@@ -1,6 +1,7 @@
 package check
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -19,6 +20,9 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "usage: movie check MOVIE [--no-expect-audio] [--no-expect-subtitles]")
 	}
 	pos, err := cli.Parse(fs, args)
+	if errors.Is(err, flag.ErrHelp) {
+		return exitcode.OK // asking for help is not a mistake
+	}
 	if err != nil {
 		return exitcode.Usage
 	}

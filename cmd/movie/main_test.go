@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -73,5 +74,32 @@ func TestHelpExits0(t *testing.T) {
 	r := runMovie(t, t.TempDir(), "help")
 	if r.code != 0 || !strings.Contains(r.stdout, "movie check") {
 		t.Fatalf("code %d stdout %q", r.code, r.stdout)
+	}
+}
+
+func TestAskingForHelpSucceeds(t *testing.T) {
+	for _, args := range [][]string{{"build", "--help"}, {"check", "-h"}, {"term", "help"}, {"term", "--help"}} {
+		r := runMovie(t, t.TempDir(), args...)
+		if r.code != 0 || !strings.Contains(r.stdout+r.stderr, "usage: movie") {
+			t.Errorf("%v: code %d\n%s%s", args, r.code, r.stdout, r.stderr)
+		}
+	}
+}
+
+func TestTermUsageDescribesEveryVerb(t *testing.T) {
+	r := runMovie(t, t.TempDir(), "term", "help")
+	lines := strings.Split(r.stdout, "\n")
+	for _, verb := range []string{"start", "run", "type", "key", "wait", "screen", "cut", "film", "stop", "render"} {
+		i := slices.IndexFunc(lines, func(l string) bool { return strings.HasPrefix(l, "  "+verb+" ") })
+		if i < 0 || i+1 >= len(lines) || !strings.HasPrefix(lines[i+1], "        ") || strings.TrimSpace(lines[i+1]) == "" {
+			t.Errorf("verb %s needs a synopsis line followed by an indented description:\n%s", verb, r.stdout)
+		}
+	}
+}
+
+func TestAMissingSessionSaysHowToStartOne(t *testing.T) {
+	r := runMovie(t, t.TempDir(), "term", "run", "nosuch", "ls")
+	if r.code != 2 || !strings.Contains(r.stderr, "movie term start nosuch") {
+		t.Fatalf("code %d\n%s", r.code, r.stderr)
 	}
 }

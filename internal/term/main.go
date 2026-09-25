@@ -15,15 +15,25 @@ import (
 const usage = `usage: movie term VERB SESSION ...
 
   start SESSION [--cwd DIR] [--size 120x34] [-- WRAPPER...]
+        start a clean bash in a private tmux server, filming; returns when ready
   run SESSION 'cmd' [--timeout 60]
+        type a command at a prompt and wait for it; prints its exit code and output
   type SESSION 'text'
+        type into whatever is running, such as a TUI's input box
   key SESSION Enter|Escape|Tab|Up|Down|Left|Right|C-c|<one character>
+        press one key
   wait SESSION [--quiet S] [--timeout 60]
+        wait for the prompt, or for the screen to hold still for S seconds
   screen SESSION
+        print the screen as text
+  cut SESSION
+        end this take, holding its result, and start the next
   film SESSION on|off
-  cut SESSION                              end this take (holding its result) and start the next
+        stop or resume filming; each on starts a new take
   stop SESSION OUTDIR [--px 1600x900]
+        end the session and render each take into OUTDIR/take-N/
   render SESSION OUTDIR [--px 1600x900]
+        render the takes again from the recording, even after stop
 `
 
 // Main is `movie term`.
@@ -33,6 +43,10 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		return exitcode.Usage
 	}
 	verb, rest := args[0], args[1:]
+	if verb == "help" || verb == "-h" || verb == "--help" {
+		fmt.Fprint(stdout, usage)
+		return exitcode.OK
+	}
 	code, err := dispatch(verb, rest, stdout, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "movie term %s: %v\n", verb, err)

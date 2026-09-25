@@ -1,6 +1,7 @@
 package build
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -15,6 +16,9 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	fs.Usage = func() { fmt.Fprintln(stderr, "usage: movie build SCENES.yaml OUT.mp4") }
 	pos, err := cli.Parse(fs, args)
+	if errors.Is(err, flag.ErrHelp) {
+		return exitcode.OK // asking for help is not a mistake
+	}
 	if err != nil {
 		return exitcode.Usage
 	}
