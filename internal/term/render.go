@@ -159,13 +159,15 @@ func writeScenes(path string, px image.Point, title, subtitle string, takes, say
 	for i, name := range takes {
 		file.Scenes = append(file.Scenes, sceneOut{ID: name, Frames: name, NarrationAt: "end", Narration: says[i]})
 	}
-	data, err := yaml.Marshal(file)
-	if err != nil {
+	var data bytes.Buffer
+	enc := yaml.NewEncoder(&data)
+	enc.SetIndent(2)
+	if err := enc.Encode(file); err != nil {
 		return err
 	}
 	header := "# Written by movie term stop. Edit freely: reword narration, add image,\n" +
 		"# card, or movie scenes. Build it with: movie build scenes.yaml OUT.mp4\n"
-	return os.WriteFile(path, append([]byte(header), data...), 0o644)
+	return os.WriteFile(path, append([]byte(header), data.Bytes()...), 0o644)
 }
 
 // Slots returns, for each frame of a take at fps, the index of the entry on

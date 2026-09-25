@@ -485,7 +485,7 @@ func TestSayWritesAReadySceneFile(t *testing.T) {
 		t.Fatalf("stop: code %d\n%s%s", r.code, r.stdout, r.stderr)
 	}
 	raw, _ := os.ReadFile(filepath.Join(dir, "takes", "scenes.yaml"))
-	if !strings.Contains(string(raw), "frames: take-1\n") {
+	if !strings.Contains(string(raw), "\n  - id: take-1\n    frames: take-1\n") {
 		t.Errorf("frames paths should be relative to the scene file:\n%s", raw)
 	}
 	f, err := scene.Load(filepath.Join(dir, "takes", "scenes.yaml"))
