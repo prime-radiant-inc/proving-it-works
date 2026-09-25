@@ -119,6 +119,7 @@ func Render(dir, outdir string, px image.Point, stdout io.Writer) error {
 	}
 	first := takes[0].Entries[0]
 	r := newRenderer(px, first.Cols, first.Rows)
+	var scenes strings.Builder
 	for i, t := range takes {
 		name := fmt.Sprintf("take-%d", i+1)
 		takeDir, err := filepath.Abs(filepath.Join(outdir, name))
@@ -146,7 +147,9 @@ func Render(dir, outdir string, px image.Point, stdout io.Writer) error {
 			return err
 		}
 		fmt.Fprintf(stdout, "%s: %d frames, %.1fs -> %s\n", name, len(slots), t.End-t.Start, takeDir)
+		fmt.Fprintf(&scenes, "  - id: %s\n    frames: %s\n", name, takeDir)
 	}
+	fmt.Fprintf(stdout, "\nScenes for your scene file (each frames scene takes its rate from take.json; add narration):\n%s", scenes.String())
 	r.warnMissing(stdout)
 	if end := entries[len(entries)-1]; end.End && end.Reason != "" {
 		fmt.Fprintf(stdout, "WARN       the recording ended without a stop: %s\n", end.Reason)

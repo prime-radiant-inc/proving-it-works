@@ -10,15 +10,28 @@ WSL).
 ```bash
 m="$SKILL_DIR/bin/movie"
 "$m" term start take/                       # a clean bash, 120x34, filming
-"$m" term run take/ 'npm test'              # types it, waits for the prompt
+"$m" term run take/ 'git log --oneline -3'  # types it, waits for the prompt
+"$m" term cut take/                         # next beat, next take
+"$m" term run take/ 'npm test'
 "$m" term screen take/                      # what is on screen, as text
-"$m" term stop take/ frames/                # frames/take-1/ + take.json
+"$m" term stop take/ frames/                # frames/take-1/, take-2/ ...
 ```
 
-`frames/take-1/take.json` holds a ready-to-paste scene body:
-`{"frames": "/abs/path/frames/take-1", "rate": 10}`. Give the scene an `id`
-when you paste it into your scene file; you may also make the path relative
-to the scene file.
+`stop` prints a scene entry for each take (`- id: take-1` / `frames: ...`)
+to paste into your scene file; add a `narration` to each. A frames scene
+reads its frame rate from the `take.json` in its directory, so you never
+set `rate` for a take.
+
+## One take per narrated beat
+
+A scene's narration starts when the scene starts and plays over the whole
+take. Film one long take and narrate it in one sentence, and the sentence
+about the result plays while the command is still being typed. So `cut`
+after each command you will narrate: each command becomes its own take,
+its own scene, and its own sentence, and each take ends holding its result
+on screen for 1.5 seconds. Within a beat, say what happens in the order it
+happens ("we run the tests, and they pass"): typing takes a second or two
+before the result appears.
 
 ## The verbs
 
@@ -30,6 +43,7 @@ to the scene file.
 | `key SESSION NAME` | `Enter`, `Escape`, `Tab`, `Up`, `Down`, `Left`, `Right`, `C-c`, or one character | 0 |
 | `wait SESSION [--quiet S] [--timeout 60]` | wait for the prompt (0 or 1), or for the screen to hold still for S seconds (3, still running) | |
 | `screen SESSION` | print the screen as text | 0 |
+| `cut SESSION` | end this take, holding its result, and start the next | 0 |
 | `film SESSION on\|off` | keep what follows out of the movie; each `on` starts a new take | 0 |
 | `stop SESSION OUTDIR [--px 1600x900]` | end the session and render every take | 0 |
 | `render SESSION OUTDIR [--px 1600x900]` | render again from the recording, even after the session is gone | 0 |

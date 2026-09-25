@@ -21,6 +21,7 @@ const usage = `usage: movie term VERB SESSION ...
   wait SESSION [--quiet S] [--timeout 60]
   screen SESSION
   film SESSION on|off
+  cut SESSION                              end this take (holding its result) and start the next
   stop SESSION OUTDIR [--px 1600x900]
   render SESSION OUTDIR [--px 1600x900]
 `
@@ -93,6 +94,16 @@ func dispatch(verb string, args []string, stdout, stderr io.Writer) (int, error)
 			return exitcode.Usage, fmt.Errorf("film takes on or off")
 		}
 		return exitcode.OK, SetFilm(s, pos[1] == "on")
+	case "cut":
+		pos, err := cli.Parse(fs, args)
+		if err != nil || len(pos) != 1 {
+			return exitcode.Usage, fmt.Errorf("needs SESSION")
+		}
+		s, err := Load(pos[0])
+		if err != nil {
+			return exitcode.Usage, err
+		}
+		return exitcode.OK, Cut(s)
 	case "wait":
 		timeout := fs.Float64("timeout", 60, "seconds to wait")
 		quiet := fs.Float64("quiet", 0, "return once the screen is unchanged this many seconds")

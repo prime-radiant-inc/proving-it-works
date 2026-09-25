@@ -20,7 +20,7 @@ scenes:
 
   - id: install
     frames: takes/install/take-1/   # a directory of PNGs, in name order
-    rate: 10                        # frames per second, default fps
+    rate: 10                        # frames per second; default: the take.json rate if the directory has one, else fps
     narration: >-
       This is a container with nothing of ours in it.
 

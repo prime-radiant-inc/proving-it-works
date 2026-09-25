@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -373,5 +374,61 @@ func TestWrappedSessionRunsThroughTheWrapper(t *testing.T) {
 	r = runMovie(t, dir, "term", "run", session, "env | grep CLAUDE_CODE_TEST_TOKEN")
 	if strings.Contains(r.stdout, "secret-token-xyz") {
 		t.Fatalf("the wrapped shell's env leaked CLAUDE_CODE_TEST_TOKEN:\n%s", r.stdout)
+	}
+}
+
+// cut ends one take and starts the next in one command, so each narrated
+// beat gets its own scene; each take ends holding its result on screen.
+func TestCutStartsANewTakeHoldingTheResult(t *testing.T) {
+	dir := t.TempDir()
+	session := startSession(t, dir)
+	runMovie(t, dir, "term", "run", session, "echo FIRST-BEAT")
+	if r := runMovie(t, dir, "term", "cut", session); r.code != 0 {
+		t.Fatalf("cut: code %d %s", r.code, r.stderr)
+	}
+	runMovie(t, dir, "term", "run", session, "echo SECOND-BEAT")
+	takes := filepath.Join(dir, "takes")
+	r := runMovie(t, dir, "term", "stop", session, takes)
+	if r.code != 0 {
+		t.Fatalf("stop: %s", r.stderr)
+	}
+	for i := 1; i <= 2; i++ {
+		frames, _ := filepath.Glob(filepath.Join(takes, fmt.Sprintf("take-%d", i), "f*.png"))
+		if len(frames) < 15 {
+			t.Errorf("take-%d has %d frames; it should hold its result for 1.5 s", i, len(frames))
+		}
+	}
+	// each take's final filmed screen shows its own result
+	var last [2]string
+	take := 0
+	for _, e := range readEntries(t, session) {
+		if e.End {
+			continue
+		}
+		if e.Film && take < 2 {
+			last[take] = e.Screen
+		} else if !e.Film && last[take] != "" {
+			take++
+		}
+	}
+	if !strings.Contains(last[0], "\nFIRST-BEAT") || !strings.Contains(last[1], "\nSECOND-BEAT") {
+		t.Fatalf("takes do not end on their results:\n%q\n%q", last[0], last[1])
+	}
+}
+
+// stop prints each take as a scene entry to paste into a scene file.
+func TestStopPrintsReadyToPasteScenes(t *testing.T) {
+	dir := t.TempDir()
+	session := startSession(t, dir)
+	runMovie(t, dir, "term", "run", session, "echo one")
+	runMovie(t, dir, "term", "cut", session)
+	runMovie(t, dir, "term", "run", session, "echo two")
+	takes := filepath.Join(dir, "takes")
+	r := runMovie(t, dir, "term", "stop", session, takes)
+	for i := 1; i <= 2; i++ {
+		want := fmt.Sprintf("  - id: take-%d\n    frames: %s\n", i, filepath.Join(takes, fmt.Sprintf("take-%d", i)))
+		if !strings.Contains(r.stdout, want) {
+			t.Errorf("missing scene entry %q in:\n%s", want, r.stdout)
+		}
 	}
 }

@@ -325,3 +325,12 @@ func Stop(s *Session, outdir string, px image.Point, stdout io.Writer) error {
 	}
 	return Render(s.Dir, outdir, px, stdout)
 }
+
+// Cut ends the current take, holding its last screen as film off does, and
+// starts the next take, so each narrated beat can be its own scene.
+func Cut(s *Session) error {
+	if err := SetFilm(s, false); err != nil {
+		return err
+	}
+	return SetFilm(s, true)
+}
