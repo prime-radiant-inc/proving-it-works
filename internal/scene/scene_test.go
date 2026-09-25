@@ -2,6 +2,7 @@ package scene
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -141,5 +142,22 @@ func TestUnreadableTakeJSONIsAProblem(t *testing.T) {
 	var p Problems
 	if !errors.As(err, &p) || !strings.Contains(strings.Join(p, "\n"), "take.json") {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestNarrationAtEndIsParsedAndValidated(t *testing.T) {
+	f, err := Load(fixture(t, "scenes:\n  - id: take\n    frames: frames\n    narration: the result\n    narration_at: end\n  - id: card\n    card: x\n    narration: hi\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !f.Scenes[0].NarrationAtEnd || f.Scenes[1].NarrationAtEnd {
+		t.Fatalf("NarrationAtEnd: %v %v", f.Scenes[0].NarrationAtEnd, f.Scenes[1].NarrationAtEnd)
+	}
+	_, err = Load(fixture(t, "scenes:\n  - id: take\n    frames: frames\n    narration: x\n    narration_at: middle\n  - id: clip\n    movie: clip.mp4\n    narration_at: end\n"))
+	all := fmt.Sprint(err)
+	for _, want := range []string{"scene take: narration_at must be start or end", `scene clip: "narration_at" is not a field of a movie scene`} {
+		if !strings.Contains(all, want) {
+			t.Errorf("missing %q in %s", want, all)
+		}
 	}
 }

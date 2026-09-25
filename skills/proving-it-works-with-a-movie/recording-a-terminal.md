@@ -17,21 +17,23 @@ m="$SKILL_DIR/bin/movie"
 "$m" term stop take/ frames/                # frames/take-1/, take-2/ ...
 ```
 
-`stop` prints a scene entry for each take (`- id: take-1` / `frames: ...`)
-to paste into your scene file; add a `narration` to each. A frames scene
-reads its frame rate from the `take.json` in its directory, so you never
-set `rate` for a take.
+`stop` prints a scene entry for each take (`id`, `frames`, and
+`narration_at: end`) to paste into your scene file; add a `narration` to
+each. A frames scene reads its frame rate from the `take.json` in its
+directory, so you never set `rate` for a take.
 
 ## One take per narrated beat
 
-A scene's narration starts when the scene starts and plays over the whole
-take. Film one long take and narrate it in one sentence, and the sentence
-about the result plays while the command is still being typed. So `cut`
-after each command you will narrate: each command becomes its own take,
-its own scene, and its own sentence, and each take ends holding its result
-on screen for 1.5 seconds. Within a beat, say what happens in the order it
-happens ("we run the tests, and they pass"): typing takes a second or two
-before the result appears.
+Film one long take and narrate it in one sentence, and the sentence about
+the result plays while the command is still being typed. So `cut` after
+each command you will narrate: each command becomes its own take, its own
+scene, and its own sentence, and each take ends holding its result on
+screen for 1.5 seconds.
+
+Keep `narration_at: end` on each take's scene: the narration then finishes
+as the take does, over the result, instead of starting while the command is
+still being typed. Write each sentence about what the beat proves ("the
+tests pass"), not a play-by-play of the typing.
 
 ## The verbs
 

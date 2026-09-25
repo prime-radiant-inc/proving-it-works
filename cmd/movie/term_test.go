@@ -426,7 +426,7 @@ func TestStopPrintsReadyToPasteScenes(t *testing.T) {
 	takes := filepath.Join(dir, "takes")
 	r := runMovie(t, dir, "term", "stop", session, takes)
 	for i := 1; i <= 2; i++ {
-		want := fmt.Sprintf("  - id: take-%d\n    frames: %s\n", i, filepath.Join(takes, fmt.Sprintf("take-%d", i)))
+		want := fmt.Sprintf("  - id: take-%d\n    frames: %s\n    narration_at: end\n", i, filepath.Join(takes, fmt.Sprintf("take-%d", i)))
 		if !strings.Contains(r.stdout, want) {
 			t.Errorf("missing scene entry %q in:\n%s", want, r.stdout)
 		}

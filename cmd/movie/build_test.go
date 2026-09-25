@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prime-radiant-inc/proving-it-works/internal/srt"
 	"github.com/prime-radiant-inc/proving-it-works/internal/testmedia"
 )
 
@@ -250,4 +251,56 @@ func TestOpenAIVoiceNarrates(t *testing.T) {
 			t.Errorf("%s:\n%s%s", engine, r.stdout, r.stderr)
 		}
 	}
+}
+
+// narration_at: end delays a scene's narration so it ends as the scene ends,
+// where a terminal take shows its result; the subtitles move with it.
+func TestNarrationAtEndLandsOnTheResult(t *testing.T) {
+	requirePiper(t)
+	dir := t.TempDir()
+	for i, c := range []string{"red", "green", "blue", "white", "black", "yellow", "cyan", "magenta", "gray", "orange"} {
+		still(t, dir, fmt.Sprintf("run/f%02d.png", i), c)
+	}
+	writeFile(t, dir, "demo.yaml", `size: 320x180
+fps: 10
+engine: piper
+scenes:
+  - id: run
+    frames: run
+    rate: 1
+    narration: And the result appears.
+    narration_at: end
+`)
+	r := runMovie(t, dir, "build", "demo.yaml", "demo.mp4")
+	if r.code != 0 {
+		t.Fatalf("code %d\n%s%s", r.code, r.stdout, r.stderr)
+	}
+	clips, _ := filepath.Glob(filepath.Join(dir, "demo.build", "narration", "*.wav"))
+	speech := testmedia.Duration(t, clips[0])
+	data, _ := os.ReadFile(filepath.Join(dir, "demo.srt"))
+	end, err := srtEnd(string(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertNear(t, "last cue end", end, 10, 0.1)
+	first := strings.SplitN(strings.Split(string(data), "\n")[1], " --> ", 2)[0]
+	start := parseTimestamp(t, first)
+	assertNear(t, "first cue start", start, 10-speech, 0.1)
+}
+
+func srtEnd(text string) (float64, error) {
+	end, err := srt.End(text)
+	if err != nil || end == nil {
+		return 0, fmt.Errorf("no cues: %v", err)
+	}
+	return *end, nil
+}
+
+func parseTimestamp(t *testing.T, ts string) float64 {
+	t.Helper()
+	var h, m, s, ms int
+	if _, err := fmt.Sscanf(ts, "%d:%d:%d,%d", &h, &m, &s, &ms); err != nil {
+		t.Fatalf("timestamp %q: %v", ts, err)
+	}
+	return float64(h*3600+m*60+s) + float64(ms)/1000
 }

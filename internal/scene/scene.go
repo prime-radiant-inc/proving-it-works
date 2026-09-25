@@ -55,6 +55,9 @@ type Scene struct {
 	Rate            float64 // frames per second of a frames scene
 	Duration        float64 // minimum hold of a card or image scene, seconds
 	Narration       string  // whitespace collapsed; empty when silent
+	// NarrationAtEnd delays the narration so it ends as the scene ends, where
+	// a terminal take shows its result, instead of starting with the scene.
+	NarrationAtEnd bool
 }
 
 // Problems lists everything wrong with a scene file.
@@ -75,9 +78,9 @@ func set(keys ...string) map[string]bool {
 var (
 	topKeys  = set("size", "fps", "engine", "voice", "scenes")
 	kindKeys = map[Kind]map[string]bool{
-		Card:   set("id", "card", "subtitle", "duration", "narration"),
-		Image:  set("id", "image", "duration", "narration"),
-		Frames: set("id", "frames", "rate", "narration"),
+		Card:   set("id", "card", "subtitle", "duration", "narration", "narration_at"),
+		Image:  set("id", "image", "duration", "narration", "narration_at"),
+		Frames: set("id", "frames", "rate", "narration", "narration_at"),
 		Movie:  set("id", "movie"),
 	}
 )
@@ -254,6 +257,15 @@ func parseScene(f *File, index int, item any) (Scene, Problems) {
 	if sc.Kind != Movie {
 		if n, ok := text("narration"); ok {
 			sc.Narration = strings.Join(strings.Fields(n), " ")
+		}
+		if at, ok := text("narration_at"); ok {
+			switch at {
+			case "start":
+			case "end":
+				sc.NarrationAtEnd = true
+			default:
+				p = append(p, fmt.Sprintf("%s: narration_at must be start or end", name))
+			}
 		}
 	}
 	return sc, p

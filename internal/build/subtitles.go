@@ -21,9 +21,9 @@ const (
 )
 
 // writeSubtitles writes cues for every narrated scene, each spanning its
-// narration clip from the scene's offset in the cut, and returns where the
-// last narration ends.
-func writeSubtitles(path string, f *scene.File, clips map[string]clip, offsets map[string]float64) (float64, error) {
+// narration clip from where that narration starts in the cut, and returns
+// where the last narration ends.
+func writeSubtitles(path string, f *scene.File, clips map[string]clip, starts map[string]float64) (float64, error) {
 	var cues []srt.Cue
 	speechEnd := 0.0
 	for _, sc := range f.Scenes {
@@ -31,12 +31,12 @@ func writeSubtitles(path string, f *scene.File, clips map[string]clip, offsets m
 		if !ok {
 			continue
 		}
-		sceneCues, err := srt.SceneCues(sc.Narration, offsets[sc.ID], c.seconds, maxCueChars, maxCueSecs)
+		sceneCues, err := srt.SceneCues(sc.Narration, starts[sc.ID], c.seconds, maxCueChars, maxCueSecs)
 		if err != nil {
 			return 0, fmt.Errorf("scene %s subtitles: %w", sc.ID, err)
 		}
 		cues = append(cues, sceneCues...)
-		speechEnd = offsets[sc.ID] + c.seconds
+		speechEnd = starts[sc.ID] + c.seconds
 	}
 	var b strings.Builder
 	if err := srt.Write(&b, cues); err != nil {

@@ -43,16 +43,18 @@ func Run(scenePath, out string, stdout io.Writer) (int, error) {
 		}
 		return 0, err
 	}
-	offsets := map[string]float64{}
+	// speechStarts is where each scene's narration starts in the cut: the
+	// scene's offset, plus any narration_at: end delay.
+	speechStarts := map[string]float64{}
 	clock := 0.0
 	var names []string
 	for _, sc := range f.Scenes {
 		c := clips[sc.ID]
-		d, err := segment(scratch, f, sc, c.wav, c.seconds)
+		d, delay, err := segment(scratch, f, sc, c.wav, c.seconds)
 		if err != nil {
 			return 0, err
 		}
-		offsets[sc.ID] = clock
+		speechStarts[sc.ID] = clock + delay
 		clock += d
 		fmt.Fprintf(stdout, "%s: %.1fs\n", sc.ID, d)
 		names = append(names, sc.ID+".mp4")
@@ -73,7 +75,7 @@ func Run(scenePath, out string, stdout io.Writer) (int, error) {
 		if err := concat(scratch, names, cut); err != nil {
 			return 0, err
 		}
-		speechEnd, err := writeSubtitles(srtPath, f, clips, offsets)
+		speechEnd, err := writeSubtitles(srtPath, f, clips, speechStarts)
 		if err != nil {
 			return 0, err
 		}

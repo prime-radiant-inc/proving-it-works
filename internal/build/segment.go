@@ -38,15 +38,20 @@ func audioInput(wav string) []string {
 
 // encodeStill writes scratch/name from count PNGs streamed on pngs at rate
 // frames per second. The last frame is held and the audio padded so the
-// segment lasts target seconds. wav is the narration clip, or "" for silence.
-// Piping the frames means no user path is ever parsed as an ffmpeg pattern.
-func encodeStill(scratch, name string, f *scene.File, pngs io.Reader, rate float64, count int, target float64, wav string) error {
+// segment lasts target seconds. wav is the narration clip, or "" for
+// silence, and starts delay seconds into the segment. Piping the frames
+// means no user path is ever parsed as an ffmpeg pattern.
+func encodeStill(scratch, name string, f *scene.File, pngs io.Reader, rate float64, count int, target float64, wav string, delay float64) error {
 	hold := math.Max(0, target-float64(count)/rate)
+	audio := "apad"
+	if delay > 0 {
+		audio = fmt.Sprintf("adelay=%d:all=1,apad", int(math.Round(delay*1000)))
+	}
 	args := []string{"-f", "image2pipe", "-c:v", "png", "-framerate", strconv.FormatFloat(rate, 'f', -1, 64), "-i", "-"}
 	args = append(args, audioInput(wav)...)
 	args = append(args,
 		"-vf", fit(f.Width, f.Height)+fmt.Sprintf(",tpad=stop_mode=clone:stop_duration=%.3f", hold),
-		"-af", "apad", "-r", strconv.Itoa(f.FPS), "-t", fmt.Sprintf("%.3f", target),
+		"-af", audio, "-r", strconv.Itoa(f.FPS), "-t", fmt.Sprintf("%.3f", target),
 		"-map", "0:v:0", "-map", "1:a:0")
 	args = append(append(args, encodeArgs...), name)
 	return ffmpeg.Run(scratch, pngs, args...)
@@ -105,42 +110,59 @@ func (fs *fileStream) Close() error {
 	return fs.closeErr
 }
 
+// narrationDelay is how far into a scene its narration starts: zero, or,
+// with narration_at: end, enough that it ends as the scene ends.
+func narrationDelay(scene, speech float64, atEnd bool) float64 {
+	if !atEnd {
+		return 0
+	}
+	return math.Max(0, scene-speech)
+}
+
 // segment encodes one scene into scratch/<id>.mp4 and returns its measured
-// duration. wav and speech are the scene's narration clip and its length, or
-// "" and 0. A still or frames scene lasts max(narration, visuals).
-func segment(scratch string, f *scene.File, sc scene.Scene, wav string, speech float64) (float64, error) {
+// duration and how far into it the narration starts. wav and speech are the
+// scene's narration clip and its length, or "" and 0. A still or frames
+// scene lasts max(narration, visuals).
+func segment(scratch string, f *scene.File, sc scene.Scene, wav string, speech float64) (float64, float64, error) {
 	name := sc.ID + ".mp4"
 	var err error
+	var delay float64
 	switch sc.Kind {
 	case scene.Movie:
 		err = encodeMovie(scratch, name, f, sc.Source)
 	case scene.Frames:
 		frames := scene.PNGs(sc.Source)
+		target := max(speech, float64(len(frames))/sc.Rate)
+		delay = narrationDelay(target, speech, sc.NarrationAtEnd)
 		pngs := streamFiles(frames)
-		err = encodeStill(scratch, name, f, pngs, sc.Rate, len(frames), max(speech, float64(len(frames))/sc.Rate), wav)
+		err = encodeStill(scratch, name, f, pngs, sc.Rate, len(frames), target, wav, delay)
 		if cerr := pngs.Close(); cerr != nil {
 			err = cerr
 		}
 	case scene.Image:
+		target := max(speech, sc.Duration)
+		delay = narrationDelay(target, speech, sc.NarrationAtEnd)
 		pngs := streamFiles([]string{sc.Source})
-		err = encodeStill(scratch, name, f, pngs, float64(f.FPS), 1, max(speech, sc.Duration), wav)
+		err = encodeStill(scratch, name, f, pngs, float64(f.FPS), 1, target, wav, delay)
 		if cerr := pngs.Close(); cerr != nil {
 			err = cerr
 		}
 	case scene.Card:
+		target := max(speech, sc.Duration)
+		delay = narrationDelay(target, speech, sc.NarrationAtEnd)
 		var png []byte
 		if png, err = Card(sc.Title, sc.Subtitle, f.Width, f.Height); err == nil {
-			err = encodeStill(scratch, name, f, bytes.NewReader(png), float64(f.FPS), 1, max(speech, sc.Duration), wav)
+			err = encodeStill(scratch, name, f, bytes.NewReader(png), float64(f.FPS), 1, target, wav, delay)
 		}
 	}
 	if err != nil {
-		return 0, fmt.Errorf("scene %s: %w", sc.ID, err)
+		return 0, 0, fmt.Errorf("scene %s: %w", sc.ID, err)
 	}
 	info, err := ffmpeg.Probe(filepath.Join(scratch, name))
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	return info.Duration, nil
+	return info.Duration, delay, nil
 }
 
 // encodeMovie plays an existing movie as itself, scaled to fit, with its own
