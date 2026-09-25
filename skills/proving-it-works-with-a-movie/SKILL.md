@@ -28,7 +28,7 @@ Blender runs Python.
 
 When the interface is hard to script (a 3D viewport, a canvas, a desktop
 app with no automation hooks), use it by hand in a loop: look at the
-screen, do one thing, look again. Then capture what worked as a script if
+screen, do one thing, look again (`movie desk shot`, then one action). Then capture what worked as a script if
 the movie needs to be rerun.
 
 ## Pick the route
@@ -37,7 +37,8 @@ the movie needs to be rerun.
 |---|---|
 | A web app in use: typing, clicking, a list updating live | `movie browse` → recording-a-browser.md |
 | Drag and drop, uploads, iframes, complex logins | Drive the browser yourself → recording-motion.md |
-| A desktop app's window | Capture the window with ffmpeg → recording-motion.md |
+| A desktop app on Linux (X11, or Xvfb in a container) | `movie desk` → recording-a-desktop.md |
+| A desktop app on macOS or Windows | Capture the window with ffmpeg → recording-motion.md |
 | A CLI, a TUI, an install, a test run, an agent working | `movie term` → recording-a-terminal.md |
 | A sequence of real states, motion optional | Screenshots as `image` scenes → rendering-stills.md |
 | OS capture blocked (wallpaper-only frames), or the thing to prove is a *run*, not a UI | Frames rendered from the run's own log → rendering-from-a-log.md |

@@ -4,7 +4,8 @@ For a web app, start with `movie browse` (recording-a-browser.md). It
 draws the cursor, paces the typing, cuts the waiting, and writes the scene
 file. This file is for what it cannot do: drag and drop, uploads, iframes,
 multi-tab flows, and complex logins, where you drive Chrome yourself with
-Playwright or raw CDP, and for capturing a desktop app's window.
+Playwright or raw CDP, and for capturing a desktop app's window on macOS or
+Windows. On Linux, use `movie desk` (recording-a-desktop.md).
 
 ## Record against a copy, always
 

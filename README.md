@@ -41,7 +41,7 @@ A skill, `proving-it-works-with-a-movie`, that covers five routes:
 | Route | For |
 |---|---|
 | Browser | A web app in use: typing, clicking, live updates (`movie browse`) |
-| Desktop window | A desktop app's window, captured with ffmpeg (recording-motion.md) |
+| Desktop app | Linux/X11: driven and filmed with `movie desk`; macOS and Windows: the window captured with ffmpeg |
 | Terminal | A CLI, a TUI, an install, a test run, an agent working |
 | Stills | A sequence of real states, motion optional |
 | Log-rendered reel | OS capture is blocked, or the thing to prove is a *run*, not a UI |
@@ -54,7 +54,8 @@ recording against a copy of your data rather than the real thing.
 
 One binary, `bin/movie`, prebuilt for macOS, Linux, and Windows. It needs
 ffmpeg; `movie term` also needs tmux, `movie browse` needs Chrome, Chromium,
-or Edge, and the keyless local voice needs
+or Edge, `movie desk` needs xdotool and ffmpeg where the display is, and the
+keyless local voice needs
 Piper (see Requirements):
 
 | Command | Does |
@@ -63,6 +64,7 @@ Piper (see Requirements):
 | `movie check movie.mp4` | the gate, alone |
 | `movie term ...` | films a terminal session, one narrated beat per `--say`, and writes the scene file |
 | `movie browse ...` | films a web app driven in headless Chrome, with a drawn cursor, one narrated beat per `--say`, and writes the scene file |
+| `movie desk ...` | films a desktop app on X11 (Linux, or Xvfb in a container) driven with real pointer and keys, one narrated beat per `--say`, and writes the scene file |
 
 ### `movie check`
 

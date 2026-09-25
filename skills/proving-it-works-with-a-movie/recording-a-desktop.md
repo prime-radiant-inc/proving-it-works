@@ -1,0 +1,83 @@
+# Recording a desktop app
+
+`movie desk` films a desktop app on an X11 display the way `movie browse`
+films a web page. You look at the screen with `shot`, act with real
+pointer and key input, and narrate with `--say`. A background recorder
+films the screen, and `stop` renders the takes and writes the scene file.
+It needs Linux with X11: a desktop session, or Xvfb in a container. It uses
+`xdotool` and `ffmpeg`, which must be installed wherever the display is.
+
+```bash
+m="$SKILL_DIR/bin/movie"
+# the app runs on display :99 in a container; start it yourself
+docker exec -d -e DISPLAY=:99 app-box blender
+"$m" desk start demo/ --display :99 --title "Blender" -- docker exec app-box
+"$m" desk shot demo/                       # look: prints demo/shot.png and the pointer
+"$m" desk click demo/ 660 420              # select the cube
+"$m" desk key demo/ x
+"$m" desk click demo/ 633 420 --say "I select the cube and delete it."
+"$m" desk stop demo/ demo/takes/
+"$m" build demo/takes/scenes.yaml blender.mp4
+```
+
+**Use the app the way a person would.** Look, do one thing, look again:
+take a `shot`, read it, act, `shot` again to see what happened. Menus open
+late, and buttons ignore clicks until the pointer has settled, so never
+fire a sequence of clicks blind. What worked can become a script later, if
+the movie needs to be rerun.
+
+**Coordinates are pixels of what is filmed**: read a point off the shot
+and click it. With `--window NAME`, only that window's area is filmed and
+the coordinates are relative to it; without it, the whole display is
+filmed.
+
+**`--say` is how you narrate**, as in `movie browse`. It works on every
+action and ends a beat. Put it on the action whose result proves the
+point. `wait --quiet 2 --timeout 120 --say "…"` waits out slow work, such
+as a render, and narrates the result once the picture has held still.
+
+Time spent waiting for your next action while the screen holds still is cut
+to 1.5 seconds, so looking and thinking leave no dead air. Time the app
+spends working is kept.
+
+## The verbs
+
+| Verb | Does | Exit |
+|---|---|---|
+| `start SESSION [--display :99] [--window NAME] [--title T] [--subtitle S] [-- WRAPPER...]` | start filming the display or one window | 0, or 2 |
+| `shot SESSION [PNG]` | save what is filmed now; print its size and the pointer position | 0 |
+| `move SESSION X Y` | glide the pointer to X,Y | 0 |
+| `click SESSION X Y [--right] [--double]` | glide there, pause, and click | 0 |
+| `drag SESSION X1 Y1 X2 Y2` | press, glide, release | 0 |
+| `key SESSION KEY...` | press keys by xdotool's names: `Return`, `Escape`, `ctrl+s`, `shift+a`, `KP_1` | 0 |
+| `type SESSION 'text'` | type at human pace into whatever has the focus | 0 |
+| `wait SESSION [--quiet 1] [--timeout 60]` | wait until the picture holds still | 0, 1 timed out |
+| `cut SESSION`, `film SESSION on\|off` | as in `browse` | 0 |
+| `stop SESSION OUTDIR`, `render SESSION OUTDIR` | render the takes and write `OUTDIR/scenes.yaml` | 0 |
+
+Every action takes `--say`. After each one the verb waits for the picture
+to hold still for 0.4 seconds, for at most 5 seconds.
+
+## In a container
+
+```bash
+docker run -d --init --name app-box IMAGE sleep infinity
+docker exec -d app-box Xvfb :99 -screen 0 1600x900x24 +extension GLX
+"$m" desk start demo/ --display :99 -- docker exec app-box
+```
+
+With `-- docker exec CONTAINER`, xdotool and ffmpeg run in the container
+and the recording stays on the host. `--init` matters: without it, exited
+processes stay behind as zombies. Apps drawing with OpenGL, such as
+Blender, get it from Mesa (`libgl1-mesa-dri`); `+extension GLX` gives Xvfb
+the GLX extension they need.
+
+A first run may put up a splash screen or a first-run dialog. Dismiss it
+before you narrate, or with `film off` around it.
+
+## macOS
+
+`movie desk` does not drive macOS yet: moving the real pointer there needs
+native code. To film a Mac app, capture it with ffmpeg as recording-motion.md
+describes. Terminal (or whatever runs the agent) needs Screen Recording
+permission, and Accessibility to send keystrokes with AppleScript.
