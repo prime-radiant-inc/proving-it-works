@@ -1,0 +1,34 @@
+# A snowman built live in Blender on Linux. film.sh films it into out/.
+size: 1600x900
+scenes:
+  - id: title
+    card: A snowman, built in Blender
+    subtitle: Blender 4.3 on Linux, filmed with the proving-it-works skill
+  - id: start
+    frames: out/start
+    rate: 10
+    narration: This is Blender, running on Linux in a container. A script drives it, one step at a time.
+  - id: body
+    frames: out/body
+    rate: 10
+    narration: We clear the default scene and start the snowman with a smooth sphere.
+  - id: middle-and-head
+    frames: out/middle_and_head
+    rate: 10
+    narration: Two smaller spheres make the middle and the head.
+  - id: nose
+    frames: out/nose
+    rate: 10
+    narration: A cone becomes the carrot nose,
+  - id: coal
+    frames: out/coal
+    rate: 10
+    narration: coal makes the eyes and buttons,
+  - id: hat
+    frames: out/hat
+    rate: 10
+    narration: and two cylinders make a hat.
+  - id: orbit
+    frames: out/orbit
+    rate: 10
+    narration: Then we turn the view all the way around it. A snowman, built live in Blender.
