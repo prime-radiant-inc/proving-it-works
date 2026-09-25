@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# todo: the tour's tiny CLI subject. Items live in ./todo.txt.
+set -euo pipefail
+file=todo.txt
+case "${1:-list}" in
+  add) shift; echo "[ ] $*" >> "$file"; echo "added: $*" ;;
+  done) sed "${2}s/^\[ \]/[x]/" "$file" > "$file.new" && mv "$file.new" "$file"; echo "done: item $2" ;;
+  list) [[ -s $file ]] && nl -w2 -s'. ' "$file" || echo "nothing to do" ;;
+  *) echo "usage: todo add TEXT | done N | list" >&2; exit 2 ;;
+esac

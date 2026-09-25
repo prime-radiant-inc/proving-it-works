@@ -1,0 +1,8 @@
+<!doctype html><title>Todo</title>
+<style>body{font:28px system-ui,sans-serif;max-width:720px;margin:60px auto;color:#222} input{font:inherit;padding:8px;width:360px} button{font:inherit;padding:8px 16px} li{margin:6px 0}</style>
+<h1>Todo</h1>
+<form id="f"><input id="item" placeholder="What needs doing?"> <button>Add</button></form>
+<ul id="list"></ul><p id="saved"></p>
+<script>
+f.onsubmit=(e)=>{e.preventDefault();const t=item.value;item.value="";setTimeout(()=>{const li=document.createElement("li");li.textContent=t;list.appendChild(li);saved.textContent="Saved "+list.children.length},400)};
+</script>

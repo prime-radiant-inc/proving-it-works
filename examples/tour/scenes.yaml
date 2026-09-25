@@ -1,0 +1,119 @@
+# The tour: Claude using the skill to film a terminal, a web app, and a
+# desktop calculator, on macOS and on Linux. Each "me" scene is a take of
+# the terminal Claude typed into (film.sh); after each stop, the movie cuts
+# to the recording those commands made. On macOS, take 1 is the prompt
+# before film.sh sets PATH off camera, so its tour starts at take 2.
+# Film both platforms, then:
+#   movie build scenes.yaml tour.mp4
+size: 1600x900
+scenes:
+  - id: title
+    card: Proving it works, on camera
+    subtitle: a terminal, a web app, and a desktop app, on macOS and Linux
+  - id: mac
+    card: macOS
+    subtitle: on this Mac
+  - id: mac-me-1
+    frames: out/mac-me-takes/take-2
+    narration: "First, a terminal. I start a session, and movie term films it."
+  - id: mac-me-2
+    frames: out/mac-me-takes/take-3
+    narration: "I run the app's commands in it, one at a time."
+  - id: mac-me-3
+    frames: out/mac-me-takes/take-4
+    narration: "Each run prints what happened, and a sentence narrates the beat."
+  - id: mac-me-4
+    frames: out/mac-me-takes/take-5
+    narration: "Stop renders the takes and writes a scene file, ready to build."
+  - id: mac-terminal
+    frames: out/mac/t-takes/take-1
+    narration_at: end
+    narration: We add an item and mark it done.
+  - id: mac-me-5
+    frames: out/mac-me-takes/take-6
+    narration: "Next, a web app. movie browse opens it in headless Chrome."
+  - id: mac-me-6
+    frames: out/mac-me-takes/take-7
+    narration: "I type into a field by its label,"
+  - id: mac-me-7
+    frames: out/mac-me-takes/take-8
+    narration: "click the button,"
+  - id: mac-me-8
+    frames: out/mac-me-takes/take-9
+    narration: "and wait for the result, with a sentence to narrate it."
+  - id: mac-me-9
+    frames: out/mac-me-takes/take-10
+    narration: "Stop renders what the browser showed, with a cursor drawn in."
+  - id: mac-browser
+    frames: out/mac/b-takes/take-1
+    narration_at: end
+    narration: We add an item, and the app saves it.
+  - id: mac-me-10
+    frames: out/mac-me-takes/take-11
+    narration: "Last, a desktop app: the calculator."
+  - id: mac-me-11
+    frames: out/mac-me-takes/take-12
+    narration: "I find its window,"
+  - id: mac-me-12
+    frames: out/mac-me-takes/take-13
+    narration: "and film it with ffmpeg while AppleScript types a sum."
+  - id: mac-calculator
+    frames: out/mac/calc
+    rate: 10
+    narration_at: end
+    narration: Twelve times thirty-four is four hundred and eight.
+  - id: linux
+    card: Linux
+    subtitle: in a container, over docker exec
+  - id: linux-me-1
+    frames: out/linux-me-takes/take-1
+    narration: "First, a terminal. I start a session, and movie term films it."
+  - id: linux-me-2
+    frames: out/linux-me-takes/take-2
+    narration: "I run the app's commands in it, one at a time."
+  - id: linux-me-3
+    frames: out/linux-me-takes/take-3
+    narration: "Each run prints what happened, and a sentence narrates the beat."
+  - id: linux-me-4
+    frames: out/linux-me-takes/take-4
+    narration: "Stop renders the takes and writes a scene file, ready to build."
+  - id: linux-terminal
+    frames: out/linux/t-takes/take-1
+    narration_at: end
+    narration: We add an item and mark it done.
+  - id: linux-me-5
+    frames: out/linux-me-takes/take-5
+    narration: "Next, a web app. movie browse opens it in headless Chrome."
+  - id: linux-me-6
+    frames: out/linux-me-takes/take-6
+    narration: "I type into a field by its label,"
+  - id: linux-me-7
+    frames: out/linux-me-takes/take-7
+    narration: "click the button,"
+  - id: linux-me-8
+    frames: out/linux-me-takes/take-8
+    narration: "and wait for the result, with a sentence to narrate it."
+  - id: linux-me-9
+    frames: out/linux-me-takes/take-9
+    narration: "Stop renders what the browser showed, with a cursor drawn in."
+  - id: linux-browser
+    frames: out/linux/b-takes/take-1
+    narration_at: end
+    narration: We add an item, and the app saves it.
+  - id: linux-me-10
+    frames: out/linux-me-takes/take-10
+    narration: "Last, a desktop app: the calculator."
+  - id: linux-me-11
+    frames: out/linux-me-takes/take-11
+    narration: "I find its window,"
+  - id: linux-me-12
+    frames: out/linux-me-takes/take-12
+    narration: "and film it with ffmpeg while xdotool types a sum."
+  - id: linux-calculator
+    frames: out/linux/calc
+    rate: 10
+    narration_at: end
+    narration: Twelve times thirty-four is four hundred and eight.
+  - id: end
+    card: Every recording here was made by the commands you saw typed
+    subtitle: built with movie build, checked with movie check
