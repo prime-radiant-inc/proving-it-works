@@ -93,7 +93,7 @@ func Start(dir string, o StartOptions, stdout io.Writer) (err error) {
 	if err := s.save(); err != nil {
 		return err
 	}
-	if err := spawnRecorder(s); err != nil {
+	if err := cli.SpawnDetached(filepath.Join(s.Dir, "recorder.log"), "term", "_record", s.Dir); err != nil {
 		return err
 	}
 	recording := filepath.Join(s.Dir, "recording.jsonl")

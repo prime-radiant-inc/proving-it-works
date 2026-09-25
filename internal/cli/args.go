@@ -1,4 +1,5 @@
-// Package cli holds the argument parsing every movie subcommand shares.
+// Package cli holds what the movie subcommands share: argument parsing,
+// output paths, and starting detached recorders.
 package cli
 
 import (
