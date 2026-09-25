@@ -14,6 +14,23 @@ to the first person who watches it.
 **Core principle: you have not made a movie until you have looked at the
 movie.** Not the frames going in. The finished file coming out.
 
+## Show each claim through its users' interface
+
+Break the claim into parts and prove each one where its users would meet
+it: the terminal for a CLI, the UI for an app, code calling it for a
+library, the test runner for "the tests pass." Scripting that interface is
+fine, and it makes the movie rerunnable: a doubtful reviewer can run it
+again. Going around it (the app's scripting API, an internal endpoint, a
+test hook, a database write) proves the way around works, not the thing
+you built. To show that someone can model in Blender, click through
+Blender's menus; building the model with `bpy` calls proves only that
+Blender runs Python.
+
+When the interface is hard to script (a 3D viewport, a canvas, a desktop
+app with no automation hooks), use it by hand in a loop: look at the
+screen, do one thing, look again. Then capture what worked as a script if
+the movie needs to be rerun.
+
 ## Pick the route
 
 | What you have to show | Route |
@@ -99,6 +116,8 @@ frame, a transition) has to be held longer than a second. Then:
 - "Close enough to demo" → you are about to hand a reviewer a frozen movie.
 - "No API key, so no narration" → `movie build` uses a local voice.
 - "I'll add subtitles later" → later is after someone watched it muted.
+- "Its API is more reliable than clicking" → then the movie proves the API.
+  Use the interface the claim is about.
 
 ## Keep the pipeline
 
