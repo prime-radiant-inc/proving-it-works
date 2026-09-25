@@ -135,8 +135,9 @@ func glide(from, to image.Point) []string {
 }
 
 // press is the xdotool commands for a click that arrives after the pointer
-// has hovered a moment and holds the button briefly: apps such as Blender
-// ignore a click that arrives with the pointer or is released at once.
+// has hovered a moment and holds the button briefly, as a person's does.
+// Some toolkits drop a click that arrives with the pointer or is released
+// at once; Blender seemed to, though a slow redraw may have hidden it.
 func press(button int, double bool) []string {
 	b := strconv.Itoa(button)
 	cmd := []string{"sleep", "0.2", "mousedown", b, "sleep", "0.12", "mouseup", b}

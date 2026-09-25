@@ -20,6 +20,7 @@ docker stop blender-desk
 
 The Dockerfile saves Blender's preferences so no first-run splash covers
 the viewport. Blender draws with Mesa's software OpenGL; Eevee renders,
-slowly. Two things Blender taught `movie desk`: a click must hover a moment
-and hold the button briefly or Blender ignores it, and a render takes long
-enough to need `wait --quiet 2 --timeout 120`.
+slowly. What Blender taught `movie desk`: on software OpenGL a viewport
+change (Material Preview, a render) can land seconds after the click, after
+the screen seemed to settle, so take a `shot` before narrating a result and
+give slow work `wait --quiet 3`.

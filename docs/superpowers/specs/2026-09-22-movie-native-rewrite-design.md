@@ -421,8 +421,8 @@ start (on the display, in the container); `desk` films and drives it.
 
 **Hands** are one `xdotool` process per action, its commands chained: a
 glide is 15 moves 25 ms apart, and a click hovers 200 ms, then holds the
-button 120 ms, because apps (Blender) drop a click that arrives with the
-pointer or is released at once. **The camera** is `ffmpeg -f x11grab
+button 120 ms, as a person's does; some toolkits drop a click that arrives
+with the pointer or is released at once. **The camera** is `ffmpeg -f x11grab
 -draw_mouse 1` at 10 fps writing PNGs to stdout (`image2pipe`,
 `-flush_packets 1`); the recorder splits the stream at each PNG's `IEND`,
 stamps each picture when it arrives, and puts it on a `film.Reel`, which
