@@ -71,3 +71,46 @@ func countDiffering(t *testing.T, a, b string) int {
 	}
 	return n
 }
+
+// Subtitles sit on a box that hides what is behind them: over a busy
+// terminal or a white page, a mostly transparent box leaves text on text.
+// Burned onto pure white, the box must turn a solid band of pixels dark.
+func TestBurnedSubtitleBoxHidesTheBackground(t *testing.T) {
+	testmedia.Require(t, "ffmpeg", "ffprobe")
+	if !ffmpeg.HasFilter("subtitles") {
+		t.Skip("needs an ffmpeg with the subtitles (libass) filter")
+	}
+	dir := t.TempDir()
+	scratch := filepath.Join(dir, "scratch")
+	os.MkdirAll(scratch, 0o755)
+	testmedia.FFmpeg(t, dir, "-f", "lavfi", "-i", "color=c=white:size=640x360:rate=10:d=3",
+		"-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo", "-t", "3",
+		"-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "cut.mp4")
+	srtPath := filepath.Join(dir, "cut.srt")
+	os.WriteFile(srtPath, []byte("1\n00:00:00,000 --> 00:00:03,000\nThe subtitle box must hide the page\n"), 0o644)
+	if _, err := burn(scratch, filepath.Join(dir, "cut.mp4"), srtPath, filepath.Join(dir, "out.mp4"), &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	testmedia.FFmpeg(t, dir, "-ss", "1.5", "-i", "out.mp4", "-frames:v", "1", "after.png")
+	f, err := os.Open(filepath.Join(dir, "after.png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	img, err := png.Decode(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dark := 0
+	for y := img.Bounds().Min.Y; y < img.Bounds().Max.Y; y++ {
+		for x := img.Bounds().Min.X; x < img.Bounds().Max.X; x++ {
+			if r, _, _, _ := img.At(x, y).RGBA(); r>>8 < 80 {
+				dark++
+			}
+		}
+	}
+	// the box behind one line of text at this size covers several thousand pixels
+	if dark < 3000 {
+		t.Fatalf("only %d dark pixels: the subtitle box is too transparent to hide the background", dark)
+	}
+}

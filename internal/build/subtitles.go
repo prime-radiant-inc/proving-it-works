@@ -47,9 +47,10 @@ func writeSubtitles(path string, f *scene.File, clips map[string]clip, offsets m
 
 // subtitleStyle boxes the text: outline-only subtitles are legible over a
 // dark terminal and marginal over a white screenshot, and a demo cuts
-// between both.
-const subtitleStyle = "FontName=DejaVu Sans,Fontsize=16,BorderStyle=3,Outline=1,Shadow=0,MarginV=30," +
-	"PrimaryColour=&H00FFFFFF&,OutlineColour=&HB0101014&,BackColour=&HB0101014&"
+// between both. The box is about 80% opaque (ASS alpha 0x30), because a
+// mostly transparent box over a busy terminal leaves text on top of text.
+const subtitleStyle = "FontName=DejaVu Sans,Fontsize=16,BorderStyle=3,Outline=6,Shadow=0,MarginV=30," +
+	"PrimaryColour=&H00FFFFFF&,OutlineColour=&H30101014&,BackColour=&H30101014&"
 
 // burn puts subtitles into the picture when ffmpeg has libass, and otherwise
 // embeds a soft track and says so. It runs from scratch with fixed names and
