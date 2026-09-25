@@ -13,3 +13,6 @@ func (b *Browser) Kill() {
 		p.Kill()
 	}
 }
+
+// Alive is always false on Windows, where browse does not run.
+func (b *Browser) Alive() bool { return false }

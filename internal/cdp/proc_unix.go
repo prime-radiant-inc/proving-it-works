@@ -13,3 +13,6 @@ func detach(cmd *exec.Cmd) { cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true
 
 // Kill ends the browser and every process it started.
 func (b *Browser) Kill() { syscall.Kill(-b.PID, syscall.SIGKILL) }
+
+// Alive reports whether the browser's process still exists.
+func (b *Browser) Alive() bool { return syscall.Kill(b.PID, 0) == nil }
