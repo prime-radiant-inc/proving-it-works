@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -129,7 +130,7 @@ scenes:
 	}
 	// 1 + 1 + 5/2.5 + 2 + 1.5
 	assertNear(t, "movie duration", testmedia.Duration(t, filepath.Join(dir, "out", "final cut.mp4")), 7.5, 0.3)
-	for _, line := range []string{"title: 1.0s", "shot: 1.0s", "run: 2.0s", "loud: 2.0s", "quiet: 1.5s"} {
+	for _, line := range []string{"title  1.0s", "shot  1.0s", "run  2.0s", "loud  2.0s", "quiet  1.5s"} {
 		if !strings.Contains(r.stdout, line) {
 			t.Errorf("missing %q in\n%s", line, r.stdout)
 		}
@@ -333,4 +334,42 @@ scenes:
 	first := strings.SplitN(strings.Split(string(data), "\n")[1], " --> ", 2)[0]
 	assertNear(t, "narration start", parseTimestamp(t, first), 7, 0.1)
 	assertNear(t, "movie length", testmedia.Duration(t, filepath.Join(dir, "demo.mp4")), 7+speech, 0.2)
+}
+
+// build reports each clip on one line with its length, warns about the local
+// voice only when it rendered something, and shows where each scene's
+// narration sits so a scene longer than its narration is visible.
+func TestBuildReportsNarrationCompactly(t *testing.T) {
+	requirePiper(t)
+	dir := t.TempDir()
+	writeFile(t, dir, "demo.yaml", `size: 320x180
+fps: 10
+engine: piper
+scenes:
+  - id: title
+    card: proving it works
+    duration: 6
+    narration: A short line.
+  - id: end
+    card: the end
+    duration: 2
+`)
+	first := runMovie(t, dir, "build", "demo.yaml", "demo.mp4")
+	clipLine := regexp.MustCompile(`(?m)^narration  title  \d+\.\ds  rendered  \S+\.wav$`)
+	sceneLine := regexp.MustCompile(`(?m)^title  6\.0s  narration \d+\.\ds from 0\.0s$`)
+	for _, re := range []*regexp.Regexp{clipLine, sceneLine} {
+		if !re.MatchString(first.stdout) {
+			t.Errorf("no line matching %s in:\n%s", re, first.stdout)
+		}
+	}
+	if !strings.Contains(first.stdout, "local voice:") {
+		t.Errorf("a freshly rendered local voice should come with its warning:\n%s", first.stdout)
+	}
+	again := runMovie(t, dir, "build", "demo.yaml", "demo.mp4")
+	if !regexp.MustCompile(`(?m)^narration  title  \d+\.\ds  cached  `).MatchString(again.stdout) {
+		t.Errorf("second build should reuse the clip:\n%s", again.stdout)
+	}
+	if strings.Contains(again.stdout, "local voice:") {
+		t.Errorf("nothing was rendered, so no voice warning:\n%s", again.stdout)
+	}
 }

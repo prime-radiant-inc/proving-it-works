@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,14 +27,13 @@ func clipName(engine, voice, model, text string) string {
 // Clip returns an accepted clip of text in dir, reusing one that exists. A
 // clip file exists only once accepted: attempts are written to a temporary
 // name and renamed into place after passing the gate.
-func Clip(dir string, e Engine, voice, text string, log io.Writer) (string, error) {
-	path := filepath.Join(dir, clipName(e.Name(), voice, e.Model(voice), text))
+func Clip(dir string, e Engine, voice, text string) (path string, rendered bool, err error) {
+	path = filepath.Join(dir, clipName(e.Name(), voice, e.Model(voice), text))
 	if _, err := os.Stat(path); err == nil {
-		fmt.Fprintf(log, "  cached   %s\n", path)
-		return path, nil
+		return path, false, nil
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
+		return "", false, err
 	}
 	var reasons []string
 	var lastErr error
@@ -43,7 +41,7 @@ func Clip(dir string, e Engine, voice, text string, log io.Writer) (string, erro
 	for attempt := 1; attempt <= 2; attempt++ {
 		tmp, err := os.CreateTemp(dir, ".attempt-*.wav")
 		if err != nil {
-			return "", err
+			return "", false, err
 		}
 		tmp.Close()
 		transcript, err := e.Synthesize(text, voice, tmp.Name())
@@ -60,13 +58,12 @@ func Clip(dir string, e Engine, voice, text string, log io.Writer) (string, erro
 			continue
 		}
 		if err := os.Rename(tmp.Name(), path); err != nil {
-			return "", err
+			return "", false, err
 		}
-		fmt.Fprintf(log, "  rendered %s\n", path)
-		return path, nil
+		return path, true, nil
 	}
 	if !gated {
-		return "", fmt.Errorf("narration failed to synthesize: %w", lastErr)
+		return "", false, fmt.Errorf("narration failed to synthesize: %w", lastErr)
 	}
-	return "", &RejectedError{Reasons: reasons}
+	return "", false, &RejectedError{Reasons: reasons}
 }

@@ -56,7 +56,11 @@ func Run(scenePath, out string, stdout io.Writer) (int, error) {
 		}
 		speechStarts[sc.ID] = clock + delay
 		clock += d
-		fmt.Fprintf(stdout, "%s: %.1fs\n", sc.ID, d)
+		if c.wav != "" {
+			fmt.Fprintf(stdout, "%s  %.1fs  narration %.1fs from %.1fs\n", sc.ID, d, c.seconds, delay)
+		} else {
+			fmt.Fprintf(stdout, "%s  %.1fs\n", sc.ID, d)
+		}
 		names = append(names, sc.ID+".mp4")
 	}
 	opts := check.Options{}

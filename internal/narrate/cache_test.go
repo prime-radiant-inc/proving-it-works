@@ -2,7 +2,6 @@ package narrate
 
 import (
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -56,7 +55,7 @@ func (e *scriptedEngine) Synthesize(_, _, wav string) (string, error) {
 func TestSynthesisFailuresAreNotRejections(t *testing.T) {
 	e := &scriptedEngine{name: "openai", attempts: []scriptedAttempt{
 		{err: errors.New("HTTP 500")}, {err: errors.New("HTTP 401: bad key")}}}
-	_, err := Clip(t.TempDir(), e, "v", "hello there", io.Discard)
+	_, _, err := Clip(t.TempDir(), e, "v", "hello there")
 	var rejected *RejectedError
 	if err == nil || errors.As(err, &rejected) {
 		t.Fatalf("got %T %v, want a plain error", err, err)
@@ -69,7 +68,7 @@ func TestSynthesisFailuresAreNotRejections(t *testing.T) {
 func TestAGateRejectionIsARejection(t *testing.T) {
 	e := &scriptedEngine{name: "openai-chat", attempts: []scriptedAttempt{
 		{transcript: "Sure, here it is: hello there"}, {err: errors.New("HTTP 500")}}}
-	_, err := Clip(t.TempDir(), e, "v", "hello there", io.Discard)
+	_, _, err := Clip(t.TempDir(), e, "v", "hello there")
 	var rejected *RejectedError
 	if !errors.As(err, &rejected) {
 		t.Fatalf("got %T %v, want *RejectedError", err, err)
