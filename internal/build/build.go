@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/prime-radiant-inc/proving-it-works/internal/check"
+	"github.com/prime-radiant-inc/proving-it-works/internal/cli"
 	"github.com/prime-radiant-inc/proving-it-works/internal/exitcode"
 	"github.com/prime-radiant-inc/proving-it-works/internal/ffmpeg"
 	"github.com/prime-radiant-inc/proving-it-works/internal/narrate"
@@ -88,7 +89,7 @@ func Run(scenePath, out string, stdout io.Writer) (int, error) {
 		}
 		opts = check.Options{ExpectAudio: true, ExpectSubtitles: true, SpeechEnd: &speechEnd}
 	}
-	fmt.Fprintf(stdout, "\nassembled %s (%.1fs)\n\n", out, clock)
+	fmt.Fprintf(stdout, "\nassembled %s (%.1fs)\n\n", cli.ShortPath(out), clock)
 	return check.Run(out, opts, stdout)
 }
 

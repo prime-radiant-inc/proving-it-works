@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/prime-radiant-inc/proving-it-works/internal/cli"
 	"github.com/prime-radiant-inc/proving-it-works/internal/exitcode"
 	"github.com/prime-radiant-inc/proving-it-works/internal/ffmpeg"
 )
@@ -82,7 +83,7 @@ func Run(movie string, o Options, stdout io.Writer) (int, error) {
 	for i, p := range picks {
 		shown[i] = fmt.Sprintf("%ds", p)
 	}
-	fmt.Fprintf(stdout, "sheet      %s\n           sampled at %s\n", sheet, strings.Join(shown, ", "))
+	fmt.Fprintf(stdout, "sheet      %s\n           sampled at %s\n", cli.ShortPath(sheet), strings.Join(shown, ", "))
 	return finish(r, workdir, stdout)
 }
 
