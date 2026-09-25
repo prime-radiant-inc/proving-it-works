@@ -18,8 +18,8 @@ import (
 	"golang.org/x/image/math/fixed"
 
 	"github.com/prime-radiant-inc/proving-it-works/internal/film"
-	"github.com/prime-radiant-inc/proving-it-works/internal/jsonl"
 	"github.com/prime-radiant-inc/proving-it-works/internal/fonts"
+	"github.com/prime-radiant-inc/proving-it-works/internal/jsonl"
 )
 
 // Shots gives the film package each recorded snapshot, picture identified

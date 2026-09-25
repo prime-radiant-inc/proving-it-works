@@ -151,7 +151,9 @@ func TestLargeMessagesArrive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var got struct{ Result struct{ Value json.RawMessage } }
+	var got struct {
+		Result struct{ Value json.RawMessage }
+	}
 	if err := c.Call(ctx(t), session, "Runtime.evaluate", map[string]any{"expression": "'x'.repeat(4<<20)", "returnByValue": true}, &got); err != nil {
 		t.Fatal(err)
 	}
