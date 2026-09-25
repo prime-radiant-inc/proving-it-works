@@ -22,9 +22,3 @@ func TestKeyArgs(t *testing.T) {
 		}
 	}
 }
-
-func TestHumanPaceCapsLongCommands(t *testing.T) {
-	if humanPace(10).Milliseconds() != 55 || humanPace(400).Milliseconds() != 10 {
-		t.Fatal(humanPace(10), humanPace(400))
-	}
-}

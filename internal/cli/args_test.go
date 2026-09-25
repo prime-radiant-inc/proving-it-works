@@ -2,7 +2,10 @@ package cli
 
 import (
 	"flag"
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -39,5 +42,19 @@ func TestParseSize(t *testing.T) {
 		if _, _, err := ParseSize(bad); err == nil {
 			t.Errorf("ParseSize(%q) accepted", bad)
 		}
+	}
+}
+
+func TestRequireEmptyDir(t *testing.T) {
+	dir := t.TempDir()
+	if err := RequireEmptyDir(filepath.Join(dir, "new")); err != nil {
+		t.Errorf("a missing directory is fine: %v", err)
+	}
+	if err := RequireEmptyDir(dir); err != nil {
+		t.Errorf("an empty directory is fine: %v", err)
+	}
+	os.WriteFile(filepath.Join(dir, "x"), nil, 0o644)
+	if err := RequireEmptyDir(dir); err == nil || !strings.Contains(err.Error(), "is not empty: use a new directory") {
+		t.Errorf("a directory in use: got %v", err)
 	}
 }

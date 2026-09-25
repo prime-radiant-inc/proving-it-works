@@ -57,3 +57,13 @@ func ShortPath(path string) string {
 	}
 	return path
 }
+
+// RequireEmptyDir refuses a directory that exists and holds anything, so a
+// new session or take never mixes with an old one.
+func RequireEmptyDir(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err == nil && len(entries) > 0 {
+		return fmt.Errorf("%s is not empty: use a new directory", dir)
+	}
+	return nil
+}

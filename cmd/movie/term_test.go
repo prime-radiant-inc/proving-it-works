@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prime-radiant-inc/proving-it-works/internal/film"
 	"github.com/prime-radiant-inc/proving-it-works/internal/scene"
 	"github.com/prime-radiant-inc/proving-it-works/internal/term"
 	"github.com/prime-radiant-inc/proving-it-works/internal/testmedia"
@@ -222,14 +223,14 @@ func TestFilmOffRightAfterRunKeepsTheResultAndHoldsIt(t *testing.T) {
 	if r := runMovie(t, dir, "term", "stop", session, takes); r.code != 0 {
 		t.Fatalf("stop: code %d\n%s%s", r.code, r.stdout, r.stderr)
 	}
-	all := term.Takes(readEntries(t, session))
+	all := film.Split(term.Shots(readEntries(t, session)))
 	if len(all) != 1 {
 		t.Fatalf("got %d takes, want 1", len(all))
 	}
 	take := all[0]
 	result := -1
-	for i, e := range take.Entries {
-		if hasLine(e.Screen, "RESULT-LINE") {
+	for i, shot := range take.Shots {
+		if hasLine(shot.Look, "RESULT-LINE") {
 			result = i
 			break
 		}
@@ -237,20 +238,20 @@ func TestFilmOffRightAfterRunKeepsTheResultAndHoldsIt(t *testing.T) {
 	if result < 0 {
 		t.Fatal("no filmed entry shows the line RESULT-LINE")
 	}
-	if held := take.End - take.Entries[result].T; held < 1.5 {
+	if held := take.End - take.Shots[result].T; held < 1.5 {
 		t.Fatalf("the result is on screen for %.2fs of the take, want at least 1.5s", held)
 	}
-	if last := take.Entries[len(take.Entries)-1]; !hasLine(last.Screen, "RESULT-LINE") {
-		t.Fatalf("the last filmed entry has no line exactly RESULT-LINE:\n%q", last.Screen)
+	if last := take.Shots[len(take.Shots)-1]; !hasLine(last.Look, "RESULT-LINE") {
+		t.Fatalf("the last filmed entry has no line exactly RESULT-LINE:\n%q", last.Look)
 	}
 	// Rendering cuts waiting-at-a-prompt time to the hold, so the rendered
 	// take still shows the result for the full 1.5 s, and no longer.
-	tight := term.Tighten(take, 1.5)
-	if held := tight.End - tight.Entries[result].T; held < 1.5-1e-6 {
+	tight := film.HoldLast(film.Tighten(take, film.Hold), film.Hold)
+	if held := tight.End - tight.Shots[result].T; held < 1.5-1e-6 {
 		t.Fatalf("after tightening the result is on screen for %.2fs, want 1.5s", held)
 	}
 	frames, _ := filepath.Glob(filepath.Join(takes, "take-1", "f*.png"))
-	if want := len(term.Slots(tight, term.FPS)); len(frames) != want {
+	if want := len(film.Slots(tight, film.FPS)); len(frames) != want {
 		t.Fatalf("take-1 has %d frames, want %d", len(frames), want)
 	}
 }
@@ -507,11 +508,11 @@ func TestSayWritesAReadySceneFile(t *testing.T) {
 	}
 	// --say ends its beat: "echo extra", run after the first beat was
 	// narrated, belongs to the second beat, the one "Then: two." narrates
-	takes := term.Takes(readEntries(t, session))
+	takes := film.Split(term.Shots(readEntries(t, session)))
 	if len(takes) != 2 {
 		t.Fatalf("got %d takes, want 2 (no empty take after the last --say)", len(takes))
 	}
-	last := func(tk term.Take) string { return tk.Entries[len(tk.Entries)-1].Screen }
+	last := func(tk film.Take) string { return tk.Shots[len(tk.Shots)-1].Look }
 	if strings.Contains(last(takes[0]), "echo extra") || !strings.Contains(last(takes[1]), "echo extra") {
 		t.Errorf("echo extra should open the second beat:\ntake 1 ends:\n%s\ntake 2 ends:\n%s", last(takes[0]), last(takes[1]))
 	}

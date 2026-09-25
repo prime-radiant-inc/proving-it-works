@@ -5,44 +5,11 @@ import (
 	"fmt"
 	"image"
 	"image/png"
-	"math"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 )
-
-func TestTakesSplitOnFilmOffAndEnd(t *testing.T) {
-	entries := []Entry{
-		{T: 0, Film: true}, {T: 1, Film: true}, {T: 2, Film: false},
-		{T: 5, Film: true}, {T: 6, End: true},
-	}
-	takes := Takes(entries)
-	if len(takes) != 2 {
-		t.Fatalf("got %d takes", len(takes))
-	}
-	if takes[0].Start != 0 || takes[0].End != 2 || len(takes[0].Entries) != 2 {
-		t.Errorf("take 1: %+v", takes[0])
-	}
-	if takes[1].Start != 5 || takes[1].End != 6 || len(takes[1].Entries) != 1 {
-		t.Errorf("take 2: %+v", takes[1])
-	}
-}
-
-func TestTakeWithoutEndMarkerHoldsItsLastSnapshotOneSecond(t *testing.T) {
-	takes := Takes([]Entry{{T: 10, Film: true}, {T: 10.5, Film: true}})
-	if len(takes) != 1 || takes[0].End != 11.5 {
-		t.Fatalf("got %+v", takes)
-	}
-}
-
-func TestSlotsShowTheLatestSnapshotAtEachFrame(t *testing.T) {
-	take := Take{Start: 0, End: 0.5, Entries: []Entry{{T: 0}, {T: 0.25}}}
-	if got := Slots(take, 10); !slices.Equal(got, []int{0, 0, 0, 1, 1}) {
-		t.Fatalf("got %v", got)
-	}
-}
 
 func writeRecording(t *testing.T, dir, content string) {
 	t.Helper()
@@ -158,48 +125,5 @@ func TestMissingGlyphsAreReportedNotHidden(t *testing.T) {
 	}
 	if len(r.missing) != 1 || r.missing[0] != '🦀' {
 		t.Fatalf("missing %q", r.missing)
-	}
-}
-
-// While the shell sits at a prompt waiting for the next command, the agent
-// driving it is thinking; that time is not the program's and is cut to the
-// hold. Time a command spends running is never shortened.
-func TestTightenCapsTimeSpentWaitingAtAPrompt(t *testing.T) {
-	take := Take{Start: 100, End: 121.5, Entries: []Entry{
-		{T: 100, Waiting: true, Screen: "$ "},             // idle before the first command: 5 s
-		{T: 105, Screen: "$ make"},                        // typing: 1 s
-		{T: 106, Screen: "$ make\nbuilding"},              // running: 1 s
-		{T: 107, Waiting: true, Screen: "$ make\nok\n$ "}, // result, then the agent thinks: 13 s
-		{T: 120, Waiting: true, Screen: "$ make\nok\n$ "}, // film off's flush and hold: 1.5 s
-	}}
-	got := Tighten(take, 1.5)
-	wantT := []float64{100, 101.5, 102.5, 103.5, 105}
-	for i, e := range got.Entries {
-		if math.Abs(e.T-wantT[i]) > 1e-9 {
-			t.Errorf("entry %d at %v, want %v", i, e.T, wantT[i])
-		}
-	}
-	if math.Abs(got.End-105) > 1e-9 {
-		t.Errorf("take ends at %v, want 105 (the result held 1.5 s)", got.End)
-	}
-}
-
-func TestSettledIsWhenTheScreenLastChanged(t *testing.T) {
-	take := Take{Start: 10, End: 16, Entries: []Entry{
-		{T: 10, Screen: "$ "}, {T: 11, Screen: "$ ls"}, {T: 12.5, Screen: "$ ls\na b\n$ "},
-		{T: 14, Screen: "$ ls\na b\n$ "},
-	}}
-	if got := Settled(take); math.Abs(got-2.5) > 1e-9 {
-		t.Errorf("settled at %v, want 2.5", got)
-	}
-	if got := Settled(Take{Start: 3, End: 5, Entries: []Entry{{T: 3, Screen: "$ "}}}); got != 0 {
-		t.Errorf("a take that never changes settles at 0, got %v", got)
-	}
-}
-
-func TestEachSentenceBelongsToTheTakeItWasSpokenIn(t *testing.T) {
-	says := Narrations(3, []Beat{{Take: 1, Say: "First."}, {Take: 2, Say: "Second."}, {Take: 2, Say: "More."}, {Take: 9, Say: "lost"}})
-	if len(says) != 3 || says[0] != "First." || says[1] != "Second. More." || says[2] != "" {
-		t.Fatalf("got %q", says)
 	}
 }

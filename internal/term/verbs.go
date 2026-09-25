@@ -14,7 +14,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prime-radiant-inc/proving-it-works/internal/cli"
 	"github.com/prime-radiant-inc/proving-it-works/internal/exitcode"
+	"github.com/prime-radiant-inc/proving-it-works/internal/film"
 )
 
 // StartOptions shape a new session.
@@ -25,16 +27,6 @@ type StartOptions struct {
 	Title, Subtitle string
 }
 
-// requireEmptyDir refuses a directory that exists and holds anything, so a
-// new session or take never mixes with an old one.
-func requireEmptyDir(dir string) error {
-	entries, err := os.ReadDir(dir)
-	if err == nil && len(entries) > 0 {
-		return fmt.Errorf("%s is not empty: use a new directory", dir)
-	}
-	return nil
-}
-
 // Start creates the session, clears the screen off camera, starts the
 // recorder in the background, and returns. Any failure once the tmux server
 // exists kills it, so Start never leaves an orphaned server behind.
@@ -42,7 +34,7 @@ func Start(dir string, o StartOptions, stdout io.Writer) (err error) {
 	if runtime.GOOS == "windows" {
 		return errors.New("movie term needs macOS, Linux, or WSL")
 	}
-	if err := requireEmptyDir(dir); err != nil {
+	if err := cli.RequireEmptyDir(dir); err != nil {
 		return err
 	}
 	if len(o.Wrapper) == 0 {
@@ -119,19 +111,10 @@ func Start(dir string, o StartOptions, stdout io.Writer) (err error) {
 	return nil
 }
 
-// humanPace is the delay between typed characters: about 55 ms, faster for
-// long commands so typing never takes more than 4 seconds.
-func humanPace(n int) time.Duration {
-	if n == 0 {
-		return 0
-	}
-	return min(55*time.Millisecond, 4*time.Second/time.Duration(n))
-}
-
 // typeText types text one character at a time, as raw bytes (send-keys -H),
 // so tmux never interprets a character such as ";" or a leading "-".
 func (s *Session) typeText(text string) error {
-	pace := humanPace(len([]rune(text)))
+	pace := film.TypingPace(len([]rune(text)))
 	for _, r := range text {
 		args := []string{"send-keys", "-t", window, "-H"}
 		for _, b := range []byte(string(r)) {
@@ -371,7 +354,7 @@ func report(stdout io.Writer, o Outcome, screen string) {
 // final screen (@movie_stop), waits for it to confirm and exit
 // (recorder.done), and only then tears the server down.
 func Stop(s *Session, outdir string, px image.Point, stdout io.Writer) error {
-	if err := requireEmptyDir(outdir); err != nil {
+	if err := cli.RequireEmptyDir(outdir); err != nil {
 		return err
 	}
 	s.tmux("set-option", "-t", window, "@movie_stop", "1") // best effort: a dead server means the recorder already stopped on its own
@@ -421,12 +404,7 @@ func (s *Session) narrate(say string) error {
 	if err != nil {
 		return fmt.Errorf("unreadable take number %q", number)
 	}
-	f, err := os.OpenFile(filepath.Join(s.Dir, "beats.jsonl"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	return json.NewEncoder(f).Encode(Beat{Take: take, Say: say})
+	return film.AppendBeat(s.Dir, film.Beat{Take: take, Say: say})
 }
 
 // cutIfPending starts a new take when the previous command ended a beat.

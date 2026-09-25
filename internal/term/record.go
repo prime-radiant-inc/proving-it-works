@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/prime-radiant-inc/proving-it-works/internal/film"
 )
 
 // Entry is one recorded snapshot of the filmed pane.
@@ -27,17 +29,6 @@ type Entry struct {
 }
 
 func now() float64 { return float64(time.Now().UnixNano()) / 1e9 }
-
-// Beat is one narrated beat: the sentence given to run --say, and the number
-// of the take it was said in (takes count from 1, one per stretch of filming).
-type Beat struct {
-	Take int    `json:"take"`
-	Say  string `json:"say"`
-}
-
-// hold is how long the final screen of a take stays up after filming stops,
-// by film off or by stop.
-const hold = 1.5
 
 // maxFailures is how many polls in a row may fail before the recorder gives
 // up; one slow or failed tmux or docker exec call must not end a take.
@@ -85,7 +76,7 @@ func Record(dir string, log io.Writer) error {
 			if err := enc.Encode(e); err != nil {
 				return err
 			}
-			return enc.Encode(Entry{T: now() + hold, End: true})
+			return enc.Encode(Entry{T: now() + film.Hold, End: true})
 		}
 		if !st.Film && !first && (last.Film || st.FilmOffPending) {
 			// Filming just stopped. Film the screen as it is now, which a
@@ -99,7 +90,7 @@ func Record(dir string, log io.Writer) error {
 			if err := enc.Encode(filmed); err != nil {
 				return err
 			}
-			e.T = now() + hold
+			e.T = now() + film.Hold
 			if err := enc.Encode(e); err != nil {
 				return err
 			}

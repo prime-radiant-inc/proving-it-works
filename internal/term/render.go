@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"image"
 	"image/draw"
@@ -19,171 +18,19 @@ import (
 	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/font/sfnt"
 	"golang.org/x/image/math/fixed"
-	"gopkg.in/yaml.v3"
 
-	"github.com/prime-radiant-inc/proving-it-works/internal/cli"
+	"github.com/prime-radiant-inc/proving-it-works/internal/film"
 	"github.com/prime-radiant-inc/proving-it-works/internal/fonts"
 )
 
-// FPS is the frame rate of rendered takes.
-const FPS = 10
-
-// Take is one stretch of recording filmed without a break.
-type Take struct {
-	Start, End float64
-	Entries    []Entry
-}
-
-// Takes splits a recording into takes. Filming starts at an entry with Film
-// set and stops at the next entry without it, or at the end marker. A
-// recording that stops without an end marker holds its last snapshot for one
-// second.
-func Takes(entries []Entry) []Take {
-	var takes []Take
-	var cur *Take
-	for _, e := range entries {
-		filming := e.Film && !e.End
-		switch {
-		case filming && cur == nil:
-			cur = &Take{Start: e.T, Entries: []Entry{e}}
-		case filming:
-			cur.Entries = append(cur.Entries, e)
-		case cur != nil:
-			cur.End = e.T
-			takes = append(takes, *cur)
-			cur = nil
-		}
+// Shots gives the film package each recorded snapshot, picture identified
+// by its screen text.
+func Shots(entries []Entry) []film.Shot {
+	shots := make([]film.Shot, len(entries))
+	for i, e := range entries {
+		shots[i] = film.Shot{T: e.T, Film: e.Film, End: e.End, Waiting: e.Waiting, Look: e.Screen, Index: i}
 	}
-	if cur != nil {
-		cur.End = cur.Entries[len(cur.Entries)-1].T + 1
-		takes = append(takes, *cur)
-	}
-	return takes
-}
-
-// Tighten caps each stretch the shell spends waiting at a prompt for the
-// next command at maxWait seconds, counting consecutive waiting snapshots of
-// the same screen as one stretch. That time belongs to the agent deciding
-// what to type, not to the program; time a command spends running is never
-// shortened.
-func Tighten(t Take, maxWait float64) Take {
-	out := Take{Start: t.Start, Entries: make([]Entry, len(t.Entries))}
-	shift, waited := 0.0, 0.0
-	for i, e := range t.Entries {
-		next := t.End
-		if i+1 < len(t.Entries) {
-			next = t.Entries[i+1].T
-		}
-		span := next - e.T
-		if !e.Waiting || i == 0 || !t.Entries[i-1].Waiting || t.Entries[i-1].Screen != e.Screen {
-			waited = 0
-		}
-		keep := span
-		if e.Waiting {
-			keep = math.Max(0, math.Min(span, maxWait-waited))
-			waited += keep
-		}
-		e.T -= shift
-		out.Entries[i] = e
-		shift += span - keep
-	}
-	out.End = t.End - shift
-	return out
-}
-
-// Settled is how many seconds into a take its screen last changed: where
-// the take's result has appeared, or 0 if the screen never changes.
-func Settled(t Take) float64 {
-	settled := 0.0
-	for i := 1; i < len(t.Entries); i++ {
-		if t.Entries[i].Screen != t.Entries[i-1].Screen {
-			settled = t.Entries[i].T - t.Start
-		}
-	}
-	return settled
-}
-
-// Narrations gives each of n takes the sentences said (run --say) while it
-// was being filmed, joined in order; a take nobody narrated gets "".
-func Narrations(n int, beats []Beat) []string {
-	says := make([]string, n)
-	for _, b := range beats {
-		if b.Take >= 1 && b.Take <= n {
-			says[b.Take-1] = strings.TrimSpace(says[b.Take-1] + " " + b.Say)
-		}
-	}
-	return says
-}
-
-func readBeats(dir string) ([]Beat, error) {
-	data, err := os.ReadFile(filepath.Join(dir, "beats.jsonl"))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var beats []Beat
-	for i, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
-		if line == "" {
-			continue
-		}
-		var b Beat
-		if err := json.Unmarshal([]byte(line), &b); err != nil {
-			return nil, fmt.Errorf("beats.jsonl line %d: %w", i+1, err)
-		}
-		beats = append(beats, b)
-	}
-	return beats, nil
-}
-
-// writeScenes writes a scene file for movie build beside the takes: the
-// title card when the session has a title, then one frames scene per take,
-// narrated where the agent said something, with paths relative to the file.
-func writeScenes(path string, px image.Point, title, subtitle string, takes, says []string) error {
-	type sceneOut struct {
-		ID          string `yaml:"id"`
-		Card        string `yaml:"card,omitempty"`
-		Subtitle    string `yaml:"subtitle,omitempty"`
-		Frames      string `yaml:"frames,omitempty"`
-		NarrationAt string `yaml:"narration_at,omitempty"`
-		Narration   string `yaml:"narration,omitempty"`
-	}
-	file := struct {
-		Size   string     `yaml:"size"`
-		Scenes []sceneOut `yaml:"scenes"`
-	}{Size: fmt.Sprintf("%dx%d", px.X, px.Y)}
-	if title != "" {
-		file.Scenes = append(file.Scenes, sceneOut{ID: "title", Card: title, Subtitle: subtitle})
-	}
-	for i, name := range takes {
-		file.Scenes = append(file.Scenes, sceneOut{ID: name, Frames: name, NarrationAt: "end", Narration: says[i]})
-	}
-	var data bytes.Buffer
-	enc := yaml.NewEncoder(&data)
-	enc.SetIndent(2)
-	if err := enc.Encode(file); err != nil {
-		return err
-	}
-	header := "# Written by movie term stop. Edit freely: reword narration, add image,\n" +
-		"# card, or movie scenes. Build it with: movie build scenes.yaml OUT.mp4\n"
-	return os.WriteFile(path, append([]byte(header), data.Bytes()...), 0o644)
-}
-
-// Slots returns, for each frame of a take at fps, the index of the entry on
-// screen at that moment.
-func Slots(t Take, fps float64) []int {
-	n := int(math.Ceil((t.End-t.Start)*fps - 1e-9))
-	slots := make([]int, n)
-	j := 0
-	for k := range n {
-		at := t.Start + float64(k)/fps
-		for j+1 < len(t.Entries) && t.Entries[j+1].T <= at {
-			j++
-		}
-		slots[k] = j
-	}
-	return slots
+	return shots
 }
 
 func readRecording(dir string) ([]Entry, error) {
@@ -215,74 +62,29 @@ func readRecording(dir string) ([]Entry, error) {
 	return entries, nil
 }
 
-// Render draws every take of the recording in dir into outdir/take-N/.
+// Render draws every take of the recording in dir into outdir/take-N/ and
+// writes outdir/scenes.yaml.
 func Render(dir, outdir string, px image.Point, stdout io.Writer) error {
-	if err := requireEmptyDir(outdir); err != nil {
-		return err
-	}
 	entries, err := readRecording(dir)
 	if err != nil {
 		return err
 	}
-	takes := Takes(entries)
-	if len(takes) == 0 {
-		return errors.New("nothing was filmed")
-	}
-	beats, err := readBeats(dir)
+	beats, err := film.ReadBeats(dir)
 	if err != nil {
 		return err
 	}
-	says := Narrations(len(takes), beats)
-	first := takes[0].Entries[0]
-	r := newRenderer(px, first.Cols, first.Rows)
-	var names []string
-	for i, t := range takes {
-		t = Tighten(t, hold)
-		name := fmt.Sprintf("take-%d", i+1)
-		takeDir, err := filepath.Abs(filepath.Join(outdir, name))
-		if err != nil {
-			return err
-		}
-		if err := os.MkdirAll(takeDir, 0o755); err != nil {
-			return err
-		}
-		prev, frame := -1, []byte(nil)
-		slots := Slots(t, FPS)
-		for k, idx := range slots {
-			if idx != prev {
-				if frame, err = r.draw(t.Entries[idx]); err != nil {
-					return err
-				}
-				prev = idx
-			}
-			if err := os.WriteFile(filepath.Join(takeDir, fmt.Sprintf("f%05d.png", k)), frame, 0o644); err != nil {
-				return err
-			}
-		}
-		meta, _ := json.MarshalIndent(map[string]any{"frames": takeDir, "rate": FPS,
-			"settled": math.Round(Settled(t)*1000) / 1000}, "", "  ")
-		if err := os.WriteFile(filepath.Join(takeDir, "take.json"), meta, 0o644); err != nil {
-			return err
-		}
-		fmt.Fprintf(stdout, "%s: %d frames, %.1fs -> %s\n", name, len(slots), t.End-t.Start, cli.ShortPath(takeDir))
-		names = append(names, name)
-	}
-	var title, subtitle string
+	m := film.Movie{Tool: "movie term stop", Size: px}
 	if s, err := Load(dir); err == nil {
-		title, subtitle = s.Title, s.Subtitle
+		m.Title, m.Subtitle = s.Title, s.Subtitle
 	}
-	scenesPath := filepath.Join(outdir, "scenes.yaml")
-	if err := writeScenes(scenesPath, px, title, subtitle, names, says); err != nil {
+	var r *renderer
+	if len(entries) > 0 {
+		r = newRenderer(px, entries[0].Cols, entries[0].Rows)
+	}
+	draw := func(shot film.Shot) ([]byte, error) { return r.draw(entries[shot.Index]) }
+	if _, err := film.Write(outdir, m, film.Split(Shots(entries)), beats, draw, stdout); err != nil {
 		return err
 	}
-	narrated := 0
-	for _, say := range says {
-		if say != "" {
-			narrated++
-		}
-	}
-	fmt.Fprintf(stdout, "\nwrote %s: %d takes, %d narrated. Add or reword anything, then:\n  movie build %s OUT.mp4\n",
-		cli.ShortPath(scenesPath), len(names), narrated, cli.ShortPath(scenesPath))
 	r.warnMissing(stdout)
 	if end := entries[len(entries)-1]; end.End && end.Reason != "" {
 		fmt.Fprintf(stdout, "WARN       the recording ended without a stop: %s\n", end.Reason)
