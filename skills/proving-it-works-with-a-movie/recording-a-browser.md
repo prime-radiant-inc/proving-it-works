@@ -17,9 +17,10 @@ m="$SKILL_DIR/bin/movie"
 "$m" build demo/takes/scenes.yaml todo.mp4
 ```
 
-Every action prints where the page ended up (`at URL "title"`). `page`
-prints the page's visible text and every link, button, and field, each with
-a TARGET that names it. Run it whenever you need to know what to click.
+Every action prints what it acted on (`clicked <button> "Add"`) and where
+the page ended up (`at URL "title"`). `page` prints the page's visible text
+and every link, button, and field, each with a TARGET that names it and a
+field's current value. Run it whenever you need to know what to click.
 
 **Record against a copy of the app's data.** A demo writes: it creates
 records, saves edits, fires jobs. Serve a scratch copy, never the data you
@@ -27,10 +28,13 @@ care about and never production.
 
 **Targets.** A TARGET is a CSS selector (`#item`, `form button`) or
 `text=Label`, where Label is what a person would call the element: a
-button's or link's text, a field's label or placeholder. Matching ignores
-case and extra spaces and prefers exact matches over partial ones. If
-nothing matches, the verb exits 1 and lists the page's targets. If the
-target is covered by something else, such as a modal or a cookie banner, it
+button's or link's text, a field's label or placeholder. To act on one,
+buttons, links, and fields come first; `wait` looks at any element showing
+the text. Matching ignores case and extra spaces, and exact matches win
+over whole-word ones: `text=Saved` finds "Saved 2" but never "Unsaved
+changes". Check what an action printed it found. Between matches, one a
+click can reach wins over one covered by a modal. If nothing matches, the
+verb exits 1 and lists the page's targets. If the target is covered, it
 exits 1 and names what covers it. It does not click through.
 
 **`--say` is how you narrate.** It works on `goto`, `click`, `type`,
@@ -38,15 +42,18 @@ exits 1 and names what covers it. It does not click through.
 since the previous `--say` and plays over this action's result. Put it on
 the action whose result proves the point. That is usually the `wait` for
 the result, not the click that asked for it. Above, the sentence would play
-over a page still saving if it were on the `click`.
+over a page still saving if it were on the `click`. `--say` needs filming
+on; with it off, nothing would show what the sentence describes.
 
 **`stop` writes the scene file**: the title card, then one scene per beat
 with its sentence, set to play over the beat's result. It is an ordinary
 scene file (assembling.md), so edit it before you build.
 
-Time the page spends waiting for your next action is cut to 1.5 seconds,
-so pausing to think never puts dead air in the movie. Time the app spends
-working after an action is kept.
+Time the page spends waiting for your next action, holding still, is cut to
+1.5 seconds, so pausing to think puts no dead air in the movie. A page that
+keeps animating (a spinner, a carousel) is not holding still, and that time
+stays. Time the app spends working after an action is kept. So is a failed
+action's: a `wait` that times out leaves nothing in the movie.
 
 ## The verbs
 
@@ -55,9 +62,10 @@ working after an action is kept.
 | `start SESSION URL [--size 1280x720] [--title T] [--subtitle S] [--browser PATH]` | launch the browser, start filming, load URL, and return once it settles | 0, or 2 |
 | `goto SESSION URL` | load URL | 0, 1 it would not load |
 | `click SESSION TARGET` | glide the cursor to TARGET and click it | 0, 1 missing or covered |
-| `type SESSION TARGET 'text'` | click TARGET, then type; a newline presses Enter | 0, 1 |
+| `type SESSION TARGET 'text' [--replace]` | click TARGET, then type after what it holds, or over it with `--replace`; a newline presses Enter | 0, 1 |
+| `choose SESSION TARGET 'Option'` | pick the option labelled Option in the select TARGET | 0, 1 |
 | `press SESSION KEY` | `Enter`, `Tab`, `Escape`, `Backspace`, `Delete`, `Up`, `Down`, `Left`, `Right`, or one character | 0 |
-| `wait SESSION TARGET [--timeout 10]` | wait until TARGET is visible | 0, 1 timed out |
+| `wait SESSION TARGET [--timeout 10]` | wait until TARGET is visible, and scroll it into view | 0, 1 timed out |
 | `page SESSION` | print the URL, title, visible text, and targets | 0 |
 | `cut SESSION` | end this take, holding its result, and start the next (`--say` does this for you) | 0 |
 | `film SESSION on\|off` | keep what follows out of the movie; each `on` starts a new take | 0 |
@@ -65,12 +73,9 @@ working after an action is kept.
 | `render SESSION OUTDIR` | render again from the recording, even after stop | 0 |
 
 After every action the verb waits for the page to settle: loaded, and no
-change for 0.4 seconds, for at most 5 seconds. Use `wait` for anything slower.
+change for 0.4 seconds after the action, for at most 5 seconds. Use `wait`
+for anything slower.
 Session and output directories must be new or empty.
-
-`type` adds to whatever the field holds. Type into empty fields, or clear
-one first (`press SESSION Backspace` for each character), or the take shows
-mangled text.
 
 The viewport is 1280x720 CSS pixels, filmed at 1600x900. An app designed
 for a wide screen may need `--size 1440x900`, but a larger viewport means
@@ -88,12 +93,14 @@ more than a second: `movie check` samples once a second.
 ## Long work does not belong inside one take
 
 A build, a deploy, a model generating: `film off`, `wait` for the result
-(with a long `--timeout`), `film on`, and film the result. The movie cuts
-from the request to its result, and a card in the scene file can say how
-long it took.
+(with a long `--timeout`), `film on`, then `wait` for it again with
+`--say`, which returns at once and narrates the result on camera. The movie
+cuts from the request to its result, and a card in the scene file can say
+how long it took.
 
 ## When browse is not enough
 
-Drag and drop, file uploads, iframes, multi-tab flows, and logins that need
-more than typing into a form are beyond these verbs. Drive Chrome yourself
+Drag and drop, file uploads, anything inside an iframe, multi-tab flows,
+keyboard shortcuts with modifiers, and logins that need more than typing
+into a form are beyond these verbs. Drive Chrome yourself
 with Playwright or raw CDP, as recording-motion.md describes.

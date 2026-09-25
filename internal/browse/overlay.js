@@ -1,9 +1,10 @@
 // The movie browse overlay, added to every document the filmed page loads.
 // It draws the cursor the movie shows, tracks when the page last changed so
 // verbs can wait for it to settle, and finds the elements verbs act on.
-// Running it twice in one document does nothing the second time.
+// Running it twice in one document does nothing the second time, and it
+// does nothing inside frames: the movie has one cursor, the top page's.
 (() => {
-  if (window.__movie) return;
+  if (window.__movie || window.top !== window) return;
   const store = "__movie_cursor";
   let cursor = null;
   let changed = Date.now();
@@ -125,29 +126,62 @@
   // deepest keeps the elements none of whose descendants are also kept.
   const deepest = (els) => els.filter((el) => !els.some((o) => o !== el && el.contains(o)));
 
-  const byText = (text) => {
+  // hasWords reports whether text contains want as whole words, so
+  // "Saved" is found in "Saved 2" but not in "Unsaved".
+  const hasWords = (text, want) => {
+    const word = /[\p{L}\p{N}]/u;
+    for (let at = text.indexOf(want); at >= 0; at = text.indexOf(want, at + 1)) {
+      const end = at + want.length;
+      const cleanStart = at === 0 || !word.test(text[at - 1]) || !word.test(want[0]);
+      const cleanEnd = end === text.length || !word.test(text[end]) || !word.test(want[want.length - 1]);
+      if (cleanStart && cleanEnd) return true;
+    }
+    return false;
+  };
+
+  // reachable reports whether a click at el's centre would land on el; an
+  // element scrolled out of view may be, so it counts.
+  const reachable = (el) => {
+    const r = el.getBoundingClientRect();
+    const x = r.left + r.width / 2;
+    const y = r.top + r.height / 2;
+    if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) return true;
+    const hit = document.elementFromPoint(x, y);
+    return !hit || hit === el || el.contains(hit);
+  };
+
+  // byText finds the element text=Label means. To act on (click, type,
+  // choose), a person means a button, link, or field before any other
+  // element. To see (wait), any element showing the text will do. Either
+  // way exact matches come before whole-word ones, and within a kind of
+  // match an element a click can reach comes before one covered by, say,
+  // a modal.
+  const byText = (text, purpose) => {
     const want = low(text);
-    const fields = [...document.querySelectorAll(interactive)].filter(visible);
+    const fields = () => [...document.querySelectorAll(interactive)].filter((el) => !ours(el) && visible(el));
     const everything = () => [...document.body.querySelectorAll("*")].filter((el) => !ours(el) && visible(el));
-    return (
-      fields.find((el) => names(el).some((n) => n.toLowerCase() === want)) ||
-      deepest(everything().filter((el) => low(el.innerText) === want))[0] ||
-      fields.find((el) => names(el).some((n) => n.toLowerCase().includes(want))) ||
-      deepest(everything().filter((el) => low(el.innerText).includes(want)))[0] ||
-      null
-    );
+    const named = (test) => fields().filter((el) => names(el).some((n) => test(n.toLowerCase())));
+    const showing = (test) => deepest(everything().filter((el) => test(low(el.innerText)) || names(el).some((n) => test(n.toLowerCase()))));
+    const exact = (n) => n === want;
+    const words = (n) => hasWords(n, want);
+    const tiers = purpose === "act" ? [() => named(exact), () => named(words), () => showing(exact), () => showing(words)] : [() => showing(exact), () => showing(words)];
+    for (const tier of tiers) {
+      const found = tier();
+      if (found.length) return found.find(reachable) || found[0];
+    }
+    return null;
   };
 
   // find returns the element a TARGET names: text=Label, or a CSS selector.
-  const find = (target) => {
-    if (target.startsWith("text=")) return byText(target.slice(5));
+  const find = (target, purpose) => {
+    if (target.startsWith("text=")) return byText(target.slice(5), purpose);
     let els;
     try {
       els = [...document.querySelectorAll(target)];
     } catch (e) {
       throw new Error(`${target} is neither a CSS selector nor text=Label`);
     }
-    return els.find(visible) || null;
+    return els.filter(visible).find(reachable) || els.find(visible) || null;
   };
 
   // scrollTo scrolls el to the middle of the viewport, smoothly, as a
@@ -183,7 +217,7 @@
   // very element, else a CSS selector by id or name, else nothing.
   const handle = (el) => {
     for (const n of names(el)) {
-      if (n.length <= 60 && byText(n) === el) return `text=${n}`;
+      if (n.length <= 60 && byText(n, "act") === el) return `text=${n}`;
     }
     if (el.id && document.querySelectorAll(`#${CSS.escape(el.id)}`).length === 1) return `#${CSS.escape(el.id)}`;
     const name = el.getAttribute("name");
@@ -198,7 +232,7 @@
     // point scrolls the target into view and returns the point to click,
     // or why there is none.
     point: async (target) => {
-      const el = find(target);
+      const el = find(target, "act");
       if (!el) return { error: "missing" };
       await scrollTo(el);
       const r = el.getBoundingClientRect();
@@ -209,16 +243,68 @@
       return { x, y, what: describe(el) };
     },
 
-    visible: (target) => !!find(target),
+    // reveal scrolls the target into view and describes it, or returns ""
+    // when nothing shows it yet.
+    reveal: async (target) => {
+      const el = find(target, "see");
+      if (!el) return "";
+      await scrollTo(el);
+      return describe(el);
+    },
+
+    // caretToEnd puts the focused field's caret after its text, or with
+    // all, selects the text so typing replaces it.
+    caretToEnd: (all) => {
+      const el = document.activeElement;
+      if (!el) return;
+      if (el.isContentEditable) {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        if (!all) range.collapse(false);
+        getSelection().removeAllRanges();
+        getSelection().addRange(range);
+        return;
+      }
+      try {
+        if (all) el.select();
+        else el.setSelectionRange(el.value.length, el.value.length);
+      } catch (e) {} // email and number fields have no caret to place
+    },
+
+    // choose picks the option labelled label in the select target, as
+    // the select's own popup would; headless Chrome draws no popup.
+    choose: (target, label) => {
+      const el = find(target, "act");
+      if (!el || el.tagName !== "SELECT") return `${target} is not a select`;
+      const option = [...el.options].find((o) => low(o.text) === low(label));
+      if (!option) return `${describe(el)} has no option ${label}; its options: ${[...el.options].map((o) => norm(o.text)).join(", ")}`;
+      el.value = option.value;
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+      return "";
+    },
+
     glide,
     pulse,
 
-    // targets lists what a verb can act on, for page and for a miss.
-    targets: () =>
-      [...document.querySelectorAll(interactive)]
-        .filter((el) => !ours(el) && visible(el))
-        .slice(0, 60)
-        .map((el) => ({ kind: kind(el), target: handle(el), href: el.tagName === "A" ? el.getAttribute("href") : "" })),
+    // targets lists what a verb can act on, for page and for a miss: the
+    // first 60, and how many more there are.
+    targets: () => {
+      const all = [...document.querySelectorAll(interactive)].filter((el) => !ours(el) && visible(el));
+      const value = (el) =>
+        el.tagName === "SELECT" ? norm(el.selectedOptions[0] ? el.selectedOptions[0].text : "")
+          : /^(INPUT|TEXTAREA)$/.test(el.tagName) && !/^(button|submit|reset|checkbox|radio|password)$/i.test(el.type) ? el.value
+          : null;
+      return {
+        more: Math.max(0, all.length - 60),
+        list: all.slice(0, 60).map((el) => ({
+          kind: kind(el),
+          target: handle(el),
+          href: el.tagName === "A" ? el.getAttribute("href") : "",
+          value: value(el),
+        })),
+      };
+    },
 
     // text is the page's visible text, one trimmed line per line, without
     // runs of blank lines.

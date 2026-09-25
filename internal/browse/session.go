@@ -90,8 +90,11 @@ func (s *Session) setState(st state) error {
 
 // mark records, from now on, whether filming is on and whether an action is
 // under way.
-func (s *Session) mark(film, busy bool) error {
-	return jsonl.Append(filepath.Join(s.Dir, "marks.jsonl"), Mark{T: now(), Film: film, Busy: busy})
+func (s *Session) mark(film, busy bool) error { return s.markAt(now(), film, busy) }
+
+// markAt records the same from time t on.
+func (s *Session) markAt(t float64, film, busy bool) error {
+	return jsonl.Append(filepath.Join(s.Dir, "marks.jsonl"), Mark{T: t, Film: film, Busy: busy})
 }
 
 func now() float64 { return float64(time.Now().UnixNano()) / 1e9 }

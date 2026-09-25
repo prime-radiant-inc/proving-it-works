@@ -18,12 +18,14 @@ const usage = `usage: movie browse VERB SESSION ...
         load URL and wait for it to settle
   click SESSION TARGET [--say "narration"]
         glide the cursor to TARGET and click it
-  type SESSION TARGET 'text' [--say "narration"]
-        click TARGET, then type at human pace
+  type SESSION TARGET 'text' [--replace] [--say "narration"]
+        click TARGET, then type at human pace after what it holds, or over it with --replace
+  choose SESSION TARGET 'Option' [--say "narration"]
+        pick the option labelled Option in the select TARGET
   press SESSION Enter|Tab|Escape|Backspace|Delete|Up|Down|Left|Right|<one character> [--say "narration"]
         press one key
   wait SESSION TARGET [--timeout 10] [--say "narration"]
-        wait until TARGET is visible
+        wait until TARGET is visible, and scroll it into view
   page SESSION
         print the URL, title, visible text, and the targets on the page
   cut SESSION
@@ -37,8 +39,10 @@ const usage = `usage: movie browse VERB SESSION ...
 
 A TARGET is a CSS selector, or text=Label: the button, link, or field a
 person would call Label (its text, label, placeholder, or aria-label), else
-any element showing that text. --say ends a beat: the sentence narrates
-everything since the last --say, over this action's result. Actions exit 1
+any element showing that text; wait looks at any element first. Exact
+matches win over whole-word ones ("Saved" finds "Saved 2", never
+"Unsaved"). --say ends a beat: the sentence narrates everything since the
+last --say, over this action's result; it needs filming on. Actions exit 1
 when the page will not let them happen (the target is missing or covered,
 the wait timed out, the URL would not load).
 `
@@ -84,41 +88,47 @@ func dispatch(verb string, args []string, stdout, stderr io.Writer) (int, error)
 		}
 		return exitcode.OK, Start(pos[0], pos[1], StartOptions{Width: w, Height: h, Title: *title,
 			Subtitle: *subtitle, Browser: *browser}, stdout)
-	case "goto", "click", "type", "press", "wait":
+	case "goto", "click", "type", "choose", "press", "wait":
 		say := fs.String("say", "", "narration for the beat this action ends")
+		replace := false
+		if verb == "type" {
+			fs.BoolVar(&replace, "replace", false, "type over what the field holds")
+		}
 		timeout := 10.0
 		if verb == "wait" {
 			fs.Float64Var(&timeout, "timeout", 10, "seconds to wait")
 		}
 		pos, err := cli.Parse(fs, args)
-		want := map[string]int{"goto": 2, "click": 2, "type": 3, "press": 2, "wait": 2}[verb]
+		want := map[string]int{"goto": 2, "click": 2, "type": 3, "choose": 3, "press": 2, "wait": 2}[verb]
 		if err != nil || len(pos) != want {
 			return exitcode.Usage, fmt.Errorf("needs %s", map[string]string{"goto": "SESSION and URL",
-				"click": "SESSION and TARGET", "type": "SESSION, TARGET, and text", "press": "SESSION and a key",
-				"wait": "SESSION and TARGET"}[verb])
+				"click": "SESSION and TARGET", "type": "SESSION, TARGET, and text", "choose": "SESSION, TARGET, and an option",
+				"press": "SESSION and a key", "wait": "SESSION and TARGET"}[verb])
 		}
 		s, err := Load(pos[0])
 		if err != nil {
 			return exitcode.Usage, err
 		}
-		var action func(p *page) error
+		var do action
 		switch verb {
 		case "goto":
-			action = goTo(pos[1])
+			do = goTo(pos[1])
 		case "click":
-			action = click(pos[1])
+			do = click(pos[1])
 		case "type":
-			action = typeInto(pos[1], pos[2])
+			do = typeInto(pos[1], pos[2], replace)
+		case "choose":
+			do = choose(pos[1], pos[2])
 		case "press":
 			k, err := keyNamed(pos[1])
 			if err != nil {
 				return exitcode.Usage, err
 			}
-			action = pressKey(k)
+			do = pressKey(k)
 		case "wait":
-			action = appear(pos[1], time.Duration(timeout*float64(time.Second)))
+			do = appear(pos[1], time.Duration(timeout*float64(time.Second)))
 		}
-		return act(s, *say, stdout, action)
+		return act(s, *say, stdout, do)
 	case "page", "cut":
 		pos, err := cli.Parse(fs, args)
 		if err != nil || len(pos) != 1 {

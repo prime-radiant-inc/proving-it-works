@@ -34,7 +34,8 @@ because `uv` shebangs do not run on Windows.
 | Engines | `openai`, `openai-chat`, `piper`. |
 | Scene file | New format, no backward compatibility. |
 | Terminal | tmux holds the session; `movie term` drives it, records styled snapshots, and renders frames. macOS, Linux, and WSL; no native Windows terminal filming. |
-| Browser apps, desktop capture, log reels, stills | Instructions in the skill, not code. |
+| Browser apps | `movie browse` drives headless Chrome through a small CDP client, draws the cursor, and films the screencast, the same shape as `term`. Playwright stays in the skill as the escape hatch. |
+| Desktop capture, log reels, stills | Instructions in the skill, not code. |
 
 ## Commands
 
@@ -43,6 +44,7 @@ because `uv` shebangs do not run on Windows.
 | `movie build SCENES.yaml OUT.mp4` | narrate, assemble, subtitle, burn, check | all |
 | `movie check MOVIE` | the gate, on any movie | all |
 | `movie term start / run / type / key / wait / screen / film / stop / render` | drive a terminal session and render it into frames | macOS, Linux, WSL |
+| `movie browse start / goto / click / type / choose / press / wait / page / cut / film / stop / render` | drive a web app in headless Chrome and render it into frames | macOS, Linux, WSL |
 
 Exit codes: 0 success; 1 negative verdict (not shippable, narration
 rejected, a filmed command failed); 2 usage or environment error (including
@@ -93,9 +95,8 @@ rather than one per commit.
 the container too, when filming one). For the keyless voice, Piper
 (`uv tool install piper-tts`) and a voice (`uvx --from piper-tts python -m
 piper.download_voices --data-dir DIR VOICE`). The tool never installs
-anything, and a missing prerequisite is an error naming the command. No
-browser; filming a browser app uses whatever browser automation the agent
-has.
+anything, and a missing prerequisite is an error naming the command.
+Chrome, Chromium, or Edge for `browse`.
 
 **Fonts.** Embedded, under their permissive licenses: DejaVu Sans for cards
 and burned subtitles, DejaVu Sans Mono for terminals, plus fallback fonts
@@ -312,27 +313,35 @@ the escape hatch for drag and drop, uploads, iframes, and complex logins.
 | `start SESSION URL [--size 1280x720] [--title T] [--subtitle S] [--browser PATH]` | launch Chrome, start the recorder, load URL, then return | 0, or 2 |
 | `goto SESSION URL [--say S]` | load URL and wait for it | 0, 1 load failed |
 | `click SESSION TARGET [--say S]` | glide the cursor to TARGET and click it | 0, 1 not found or covered |
-| `type SESSION TARGET 'text' [--say S]` | click TARGET, then type at human pace | 0, 1 |
+| `type SESSION TARGET 'text' [--replace] [--say S]` | click TARGET, then type at human pace after its text, or over it | 0, 1 |
+| `choose SESSION TARGET 'Option' [--say S]` | pick an option in a select (headless Chrome draws no popup, so this sets it and fires input and change) | 0, 1 |
 | `press SESSION KEY [--say S]` | `Enter`, `Tab`, `Escape`, `Backspace`, `Up`, `Down`, `Left`, `Right`, or one character | 0 |
-| `wait SESSION TARGET [--timeout 10] [--say S]` | wait until TARGET is visible | 0, 1 timed out |
+| `wait SESSION TARGET [--timeout 10] [--say S]` | wait until TARGET is visible, then scroll it into view | 0, 1 timed out |
 | `page SESSION` | print the URL, title, visible text, and the targets on the page | 0 |
 | `cut SESSION`, `film SESSION on\|off` | as in `term` | 0 |
 | `stop SESSION OUTDIR` | close Chrome, render the takes, write `OUTDIR/scenes.yaml` | 0 |
 | `render SESSION OUTDIR` | render again from the recording | 0 |
 
 A TARGET is a CSS selector, or `text=Label`: the visible element whose
-text, value, `aria-label`, placeholder, or label is Label (ignoring case
-and extra spaces), preferring buttons, links, and form fields, then exact
-matches over partial ones. A target that matches nothing fails with the
-page's targets listed, so the next attempt is informed. A click whose point
-is covered by another element fails, naming it.
+text, `aria-label`, label, placeholder, title, or button value is Label,
+ignoring case and extra spaces. For acting (click, type, choose), buttons,
+links, and fields are tried first, exact then whole-word, then any element,
+exact then whole-word; for `wait`, any element, exact then whole-word.
+Whole-word means "Saved" matches "Saved 2" but not "Unsaved". Within a
+tier, an element a click would reach beats one covered by another. A target
+that matches nothing fails with the page's targets listed, so the next
+attempt is informed. A click whose point is covered fails, naming the cover.
 
 After every action the verb waits for the page to settle (loaded, and no DOM
-change for 400 ms, at most 5 s), then prints one line: the URL and title.
-`page` is how the agent reads the page.
+change for 400 ms counted from the end of the action, at most 5 s), then
+prints what it acted on and the URL and title. A URL differing only in its
+fragment is a same-document navigation with nothing to load. `page` is how
+the agent reads the page, field values included.
 
 `--say` works as in `term`: it ends a beat, its sentence narrates everything
 filmed since the previous `--say`, and the next action starts a new take.
+It is refused while filming is off, and a pending cut does nothing while
+filming is off. A failed action's time counts as waiting, so it is cut.
 
 ### How it works
 
@@ -364,9 +373,11 @@ film as set by `film` and `cut`. Take number and a pending cut live in
 `SESSION/state.json`; beats in `beats.jsonl` as in `term`. `stop` marks the
 end, writes `SESSION/stop`, waits for the recorder's `recorder.done`, closes
 Chrome with `Browser.close` (killing it if it lingers), and removes the
-profile.
+profile; a second `stop` is refused. A failed `start` empties the session
+directory again.
 
-**The overlay** is a script added to every document. It draws an arrow
+**The overlay** is a script added to every top-level document (never
+frames: one cursor). It draws an arrow
 cursor (fixed position, top z-index, no pointer events) that glides to each
 click target with easing and pulses on the click, remembers its position in
 `sessionStorage` so it does not jump on same-origin navigation, counts DOM

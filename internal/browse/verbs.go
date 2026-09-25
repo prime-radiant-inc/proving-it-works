@@ -51,6 +51,13 @@ func Start(dir, url string, o StartOptions, stdout io.Writer) (err error) {
 	if err := os.MkdirAll(abs, 0o755); err != nil {
 		return err
 	}
+	// A failed start leaves the directory as it found it, empty, so the
+	// same start can simply be run again.
+	defer func() {
+		if err != nil {
+			clearDir(abs)
+		}
+	}()
 	b, err := cdp.Launch(path, cdp.Options{Profile: filepath.Join(abs, "profile"), Width: o.Width, Height: o.Height,
 		Scale: scale, Log: filepath.Join(abs, "browser.log")})
 	if err != nil {
@@ -59,6 +66,8 @@ func Start(dir, url string, o StartOptions, stdout io.Writer) (err error) {
 	defer func() {
 		if err != nil {
 			b.Kill()
+			// the recorder, if it started, notices and writes its last lines
+			waitFor(5*time.Second, func() bool { return !hasContent(filepath.Join(abs, "frames.jsonl")) || exists(filepath.Join(abs, "recorder.done")) })
 		}
 	}()
 	s := &Session{Dir: abs, Browser: *b, Title: o.Title, Subtitle: o.Subtitle}
@@ -161,6 +170,14 @@ func waitFor(timeout time.Duration, cond func() bool) bool {
 	return true
 }
 
+// clearDir removes everything in dir, which Start made or found empty.
+func clearDir(dir string) {
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		os.RemoveAll(filepath.Join(dir, e.Name()))
+	}
+}
+
 func exists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
@@ -193,6 +210,7 @@ func (p *page) navigate(url string) error {
 		return err
 	}
 	var got struct {
+		LoaderID  string `json:"loaderId"`
 		ErrorText string `json:"errorText"`
 	}
 	if err := p.call("Page.navigate", map[string]string{"url": url}, &got); err != nil {
@@ -201,25 +219,33 @@ func (p *page) navigate(url string) error {
 	if got.ErrorText != "" {
 		return loadFailed(url, got.ErrorText)
 	}
-	select {
-	case <-loaded:
-	case <-time.After(callTimeout):
-		return loadFailed(url, "it did not finish loading within 30 s")
+	// A URL that differs only in its fragment, as a hash-routed app's do,
+	// stays in the same document: nothing loads, and there is no loader.
+	if got.LoaderID != "" {
+		select {
+		case <-loaded:
+		case <-time.After(callTimeout):
+			return loadFailed(url, "it did not finish loading within 30 s")
+		}
 	}
-	return p.settle()
+	return p.settle(time.Now())
 }
 
 // Settling: an action is over once the page has loaded and has not changed
-// for settleQuiet, or after settleMax whatever it is doing.
+// for settleQuiet since the action, or after settleMax whatever it is doing.
 const (
 	settleQuiet = 400 * time.Millisecond
 	settleMax   = 5 * time.Second
 )
 
-// settle waits for the page to settle. A navigation the action started can
-// replace the document mid-check, so a failed check is simply tried again.
-func (p *page) settle() error {
-	deadline := time.Now().Add(settleMax)
+// settle waits for the page to settle after an action that ended at done.
+// A page that was still before the action looks quiet the moment it ends,
+// so a result that lands a moment later would be missed: settle first gives
+// it settleQuiet to start. A navigation the action started can replace the
+// document mid-check, so a failed check is simply tried again.
+func (p *page) settle(done time.Time) error {
+	time.Sleep(time.Until(done.Add(settleQuiet)))
+	deadline := done.Add(settleMax)
 	for time.Now().Before(deadline) {
 		var got struct {
 			Ready string  `json:"ready"`
@@ -253,6 +279,9 @@ func (p *page) report(stdout io.Writer) error {
 // Stop ends the session: it marks the end, has the recorder finish, closes
 // the browser, removes its profile, and renders the takes.
 func Stop(s *Session, outdir string, stdout io.Writer) error {
+	if exists(filepath.Join(s.Dir, "stop")) {
+		return fmt.Errorf("%s is already stopped: use render to render it again", s.Dir)
+	}
 	if err := cli.RequireEmptyDir(outdir); err != nil {
 		return err
 	}
@@ -285,8 +314,9 @@ func closeBrowser(b cdp.Browser) {
 		}
 		conn.Close()
 	}
-	waitFor(3*time.Second, func() bool { return !b.Alive() })
-	b.Kill()
+	if !waitFor(3*time.Second, func() bool { return !b.Alive() }) {
+		b.Kill()
+	}
 }
 
 // Render draws every take of the session in dir into outdir/take-N/ and
