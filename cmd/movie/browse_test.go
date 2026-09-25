@@ -319,3 +319,20 @@ func TestBrowseFilmOffLeavesActionsOutOfTheMovie(t *testing.T) {
 		t.Error("take 2 should open on the saved item, not the page take 1 showed")
 	}
 }
+
+// Time spent waiting on the agent is cut to 1.5 s, even while a focused
+// field's caret would blink and make the page look busy.
+func TestBrowseCutsTheAgentsThinkingTimeWithAFieldFocused(t *testing.T) {
+	dir := t.TempDir()
+	url := serveApp(t, map[string]string{"/": todoApp})
+	session := startBrowse(t, dir, url)
+	mustBrowse(t, dir, "type", session, "#item", "x")
+	time.Sleep(4 * time.Second)
+	takes := filepath.Join(dir, "takes")
+	mustBrowse(t, dir, "stop", session, takes)
+	frames, _ := filepath.Glob(filepath.Join(takes, "take-1", "f*.png"))
+	// start's idle 1.5 s at most, the glide and click, the settle, and 1.5 s held
+	if len(frames) > 45 {
+		t.Errorf("take-1 has %d frames: the 4 s the agent spent thinking was not cut", len(frames))
+	}
+}

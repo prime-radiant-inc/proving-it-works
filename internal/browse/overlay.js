@@ -38,7 +38,10 @@
     cursor.style.cssText =
       "position:fixed;left:0;top:0;width:28px;height:28px;z-index:2147483647;" +
       "pointer-events:none;display:none;will-change:transform";
+    // A blinking caret changes the picture twice a second forever, which
+    // would make an idle page look busy; this caret holds still.
     cursor.innerHTML =
+      "<style>*{caret-animation:manual !important}</style>" +
       '<svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">' +
       '<path d="M3 2 L3 22 L8.5 17 L12.5 26 L16 24.5 L12 15.5 L19.5 15.5 Z" ' +
       'fill="#111" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/></svg>';
@@ -228,8 +231,6 @@
         .trim(),
   };
 
-  if (remembered()) {
-    if (document.documentElement) ensureCursor();
-    else document.addEventListener("DOMContentLoaded", ensureCursor, { once: true });
-  }
+  if (document.documentElement) ensureCursor();
+  else document.addEventListener("DOMContentLoaded", ensureCursor, { once: true });
 })();
