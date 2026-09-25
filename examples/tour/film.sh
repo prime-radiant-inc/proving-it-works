@@ -46,9 +46,10 @@ case $platform in
     "$m" term start "$me" --cwd "$work" --size 100x26
     "$m" term film "$me" off
     # the screen's capture device, and device pixels per point (Retina is 2)
-    screen=$(ffmpeg -hide_banner -f avfoundation -list_devices true -i "" 2>&1 | sed -n 's/.*\[\([0-9]*\)\] Capture screen 0.*/\1/p')
-    scale=$(system_profiler SPDisplaysDataType | grep -q Retina && echo 2 || echo 1)
-    "$m" term run "$me" "export PATH=$bin:$here/app:\$PATH SCREEN=$screen SCALE=$scale"
+    # (listing devices always exits nonzero, hence || true)
+    screen=$( (ffmpeg -hide_banner -f avfoundation -list_devices true -i "" 2>&1 || true) | sed -n 's/.*\[\([0-9]*\)\] Capture screen 0.*/\1/p')
+    scale=$(system_profiler SPDisplaysDataType | grep -c Retina > /dev/null && echo 2 || echo 1)
+    "$m" term run "$me" "export PATH=$bin:$here/app:\$PATH SCREEN=$screen SCALE=$scale; clear"
     "$m" term film "$me" on
     ;;
   *) echo "usage: film.sh mac|linux" >&2; exit 2 ;;
@@ -89,7 +90,8 @@ case $platform in
     run "clear; open -a Calculator" "Last, a desktop app: the calculator."
     run "eval \$(osascript -e 'tell application \"System Events\" to tell window 1 of process \"Calculator\" to set {{x, y}, {w, h}} to {position, size}' -e 'return \"X=\" & x & \" Y=\" & y & \" W=\" & w & \" H=\" & h')" \
       "I find its window,"
-    run 'mkdir calc; ffmpeg -nostdin -v error -f avfoundation -pixel_format bgr0 -framerate 10 -capture_cursor 1 -i "$SCREEN:none" -t 5 -vf "crop=$((SCALE*W)):$((SCALE*H)):$((SCALE*X)):$((SCALE*Y)),fps=10" calc/f%04d.png & sleep 1; osascript -e "tell application \"Calculator\" to activate" -e "repeat with c in characters of \"12*34=\"" -e "tell application \"System Events\" to keystroke c" -e "delay 0.4" -e "end repeat"; wait $!' \
+    # macOS's capture framework prints objc warnings ffmpeg cannot silence
+    run 'mkdir calc; ffmpeg -nostdin -v error -f avfoundation -pixel_format bgr0 -framerate 10 -capture_cursor 1 -i "$SCREEN:none" -t 5 -vf "crop=$((SCALE*W)):$((SCALE*H)):$((SCALE*X)):$((SCALE*Y)),fps=10" calc/f%04d.png 2> /dev/null & sleep 1; osascript -e "tell application \"Calculator\" to activate" -e "repeat with c in characters of \"12*34=\"" -e "tell application \"System Events\" to keystroke c" -e "delay 0.4" -e "end repeat"; wait $!' \
       "and film it with ffmpeg while AppleScript types a sum."
     ;;
 esac
