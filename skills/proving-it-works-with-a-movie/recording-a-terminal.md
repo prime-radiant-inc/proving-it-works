@@ -9,51 +9,48 @@ WSL).
 
 ```bash
 m="$SKILL_DIR/bin/movie"
-"$m" term start take/                       # a clean bash, 120x34, filming
-"$m" term run take/ 'git log --oneline -3'  # types it, waits for the prompt
-"$m" term cut take/                         # next beat, next take
-"$m" term run take/ 'npm test'
-"$m" term screen take/                      # what is on screen, as text
-"$m" term stop take/ frames/                # frames/take-1/, take-2/ ...
+"$m" term start demo/ --title "todo" --subtitle "a tiny todo list, proven on camera"
+"$m" term run demo/ './todo add buy milk' --say "We add an item."
+"$m" term run demo/ './todo add write the report'
+"$m" term run demo/ './todo done 1' --say "Add a second, and mark the first one done."
+"$m" term run demo/ './todo list' --say "The list shows the first item checked off."
+"$m" term stop demo/ demo/takes/            # renders the takes, writes demo/takes/scenes.yaml
+"$m" build demo/takes/scenes.yaml todo.mp4
 ```
 
-`stop` prints a scene entry for each take (`id`, `frames`, and
-`narration_at: end`) to paste into your scene file; add a `narration` to
-each. A frames scene reads its frame rate from the `take.json` in its
-directory, so you never set `rate` for a take.
+That is the whole route. `run` types a command at human pace, waits for
+the prompt, and prints the command's exit code and output, so you see what
+happened without looking at a frame.
 
-## One take per narrated beat
+**`--say` is how you narrate.** It starts a new beat with that command, and
+the sentence narrates that beat. Commands without `--say` join the current
+beat, as `add write the report` does above. Say what the beat proves ("the
+tests pass"), not what is being typed.
 
-Film one long take and narrate it in one sentence, and the sentence about
-the result plays while the command is still being typed. So `cut` after
-each command you will narrate: each command becomes its own take, its own
-scene, and its own sentence, and each take ends holding its result on
-screen for 1.5 seconds.
+**`stop` writes the scene file.** `scenes.yaml` beside the takes holds the
+title card (from `start --title`), then one scene per beat with its
+sentence, set to play over the beat's result: the narration never starts
+before the result is on screen, and the result stays up until it finishes.
+It is an ordinary scene file (assembling.md): reword it, or add image, card,
+or movie scenes, before you build.
 
-Keep `narration_at: end` on each take's scene: the narration then plays
-over the result instead of starting while the command is still being typed.
-It never starts before the result appears (the take records when its screen
-settled), and if it runs longer than the take, the result stays on screen
-until it finishes. Write each sentence about what the beat proves ("the
-tests pass"), not a play-by-play of the typing.
-
-Time the shell spends waiting at a prompt for your next command is cut from
-the take to 1.5 seconds, so pausing to think between commands never puts
-dead air in the movie.
+Time the shell spends waiting at a prompt for your next command is cut to
+1.5 seconds, so pausing to think between commands never puts dead air in
+the movie. `screen` prints what is on screen right now, for driving a TUI.
 
 ## The verbs
 
 | Verb | Does | Exit |
 |---|---|---|
-| `start SESSION [--cwd DIR] [--size 120x34] [-- WRAPPER...]` | start the session and the recorder, then return | 0, or 2 |
-| `run SESSION 'cmd' [--timeout 60]` | type the command at human pace, press Enter, wait for the prompt; print the outcome, then the command and its output (all of it, even if it scrolled) | 0 succeeded, 1 failed, 2 refused (a command is still running), 3 still running at the timeout |
+| `start SESSION [--cwd DIR] [--size 120x34] [--title T] [--subtitle S] [-- WRAPPER...]` | start the session and the recorder, then return | 0, or 2 |
+| `run SESSION 'cmd' [--say "sentence"] [--timeout 60]` | type the command at human pace, press Enter, wait for the prompt; print the outcome, then the command and its output (all of it, even if it scrolled) | 0 succeeded, 1 failed, 2 refused (a command is still running), 3 still running at the timeout |
 | `type SESSION 'text'` | type into whatever is running, such as a TUI's input box | 0 |
 | `key SESSION NAME` | `Enter`, `Escape`, `Tab`, `Up`, `Down`, `Left`, `Right`, `C-c`, or one character | 0 |
 | `wait SESSION [--quiet S] [--timeout 60]` | wait for the prompt (0 or 1), or for the screen to hold still for S seconds (3, still running) | |
 | `screen SESSION` | print the screen as text | 0 |
-| `cut SESSION` | end this take, holding its result, and start the next | 0 |
+| `cut SESSION` | end this take, holding its result, and start the next (`--say` does this for you) | 0 |
 | `film SESSION on\|off` | keep what follows out of the movie; each `on` starts a new take | 0 |
-| `stop SESSION OUTDIR [--px 1600x900]` | end the session and render every take | 0 |
+| `stop SESSION OUTDIR [--px 1600x900]` | end the session, render every take, and write `OUTDIR/scenes.yaml` | 0 |
 | `render SESSION OUTDIR [--px 1600x900]` | render again from the recording, even after the session is gone | 0 |
 
 `run` refuses while a command is still running, so keys never land in a

@@ -28,6 +28,13 @@ type Entry struct {
 
 func now() float64 { return float64(time.Now().UnixNano()) / 1e9 }
 
+// Beat is one narrated beat: the sentence given to run --say, and the number
+// of the take it was said in (takes count from 1, one per stretch of filming).
+type Beat struct {
+	Take int    `json:"take"`
+	Say  string `json:"say"`
+}
+
 // hold is how long the final screen of a take stays up after filming stops,
 // by film off or by stop.
 const hold = 1.5

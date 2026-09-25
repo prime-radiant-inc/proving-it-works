@@ -14,10 +14,11 @@ import (
 
 const usage = `usage: movie term VERB SESSION ...
 
-  start SESSION [--cwd DIR] [--size 120x34] [-- WRAPPER...]
+  start SESSION [--cwd DIR] [--size 120x34] [--title T] [--subtitle S] [-- WRAPPER...]
         start a clean bash in a private tmux server, filming; returns when ready
-  run SESSION 'cmd' [--timeout 60]
-        type a command at a prompt and wait for it; prints its exit code and output
+  run SESSION 'cmd' [--say "narration"] [--timeout 60]
+        type a command at a prompt and wait for it; prints its exit code and output;
+        --say starts a new beat, narrated by that sentence
   type SESSION 'text'
         type into whatever is running, such as a TUI's input box
   key SESSION Enter|Escape|Tab|Up|Down|Left|Right|C-c|<one character>
@@ -31,7 +32,7 @@ const usage = `usage: movie term VERB SESSION ...
   film SESSION on|off
         stop or resume filming; each on starts a new take
   stop SESSION OUTDIR [--px 1600x900]
-        end the session and render each take into OUTDIR/take-N/
+        end the session, render each take into OUTDIR/take-N/, and write OUTDIR/scenes.yaml
   render SESSION OUTDIR [--px 1600x900]
         render the takes again from the recording, even after stop
 `
@@ -69,6 +70,8 @@ func dispatch(verb string, args []string, stdout, stderr io.Writer) (int, error)
 		}
 		cwd := fs.String("cwd", "", "starting directory (inside the container when wrapped)")
 		size := fs.String("size", "120x34", "terminal columns x rows")
+		title := fs.String("title", "", "title card for the scene file stop writes")
+		subtitle := fs.String("subtitle", "", "subtitle for that title card")
 		pos, err := cli.Parse(fs, args)
 		if err != nil || len(pos) != 1 {
 			return exitcode.Usage, fmt.Errorf("needs exactly one SESSION directory")
@@ -77,9 +80,11 @@ func dispatch(verb string, args []string, stdout, stderr io.Writer) (int, error)
 		if err != nil {
 			return exitcode.Usage, err
 		}
-		return exitcode.OK, Start(pos[0], StartOptions{Cwd: *cwd, Cols: cols, Rows: rows, Wrapper: wrapper}, stdout)
+		return exitcode.OK, Start(pos[0], StartOptions{Cwd: *cwd, Cols: cols, Rows: rows, Wrapper: wrapper,
+			Title: *title, Subtitle: *subtitle}, stdout)
 	case "run":
 		timeout := fs.Float64("timeout", 60, "seconds to wait for the next prompt")
+		say := fs.String("say", "", "narration for a new beat that starts with this command")
 		pos, err := cli.Parse(fs, args)
 		if err != nil || len(pos) != 2 {
 			return exitcode.Usage, fmt.Errorf("needs SESSION and a command")
@@ -88,7 +93,7 @@ func dispatch(verb string, args []string, stdout, stderr io.Writer) (int, error)
 		if err != nil {
 			return exitcode.Usage, err
 		}
-		return RunCommand(s, pos[1], seconds(*timeout), stdout)
+		return RunCommand(s, pos[1], *say, seconds(*timeout), stdout)
 	case "type", "key", "film":
 		pos, err := cli.Parse(fs, args)
 		if err != nil || len(pos) != 2 {

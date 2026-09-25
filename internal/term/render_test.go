@@ -196,3 +196,10 @@ func TestSettledIsWhenTheScreenLastChanged(t *testing.T) {
 		t.Errorf("a take that never changes settles at 0, got %v", got)
 	}
 }
+
+func TestEachSentenceBelongsToTheTakeItWasSpokenIn(t *testing.T) {
+	says := Narrations(3, []Beat{{Take: 1, Say: "First."}, {Take: 2, Say: "Second."}, {Take: 2, Say: "More."}, {Take: 9, Say: "lost"}})
+	if len(says) != 3 || says[0] != "First." || says[1] != "Second. More." || says[2] != "" {
+		t.Fatalf("got %q", says)
+	}
+}

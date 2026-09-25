@@ -60,7 +60,7 @@ Piper (see Requirements):
 |---|---|
 | `movie build scenes.yaml movie.mp4` | narrates (a cloud voice with a key, a local one without), assembles each scene to max(narration, visuals), writes and burns subtitles, and runs the gate |
 | `movie check movie.mp4` | the gate, alone |
-| `movie term ...` | films a terminal session into frames |
+| `movie term ...` | films a terminal session, one narrated beat per `--say`, and writes the scene file |
 
 ### `movie check`
 

@@ -19,9 +19,10 @@ import (
 
 // StartOptions shape a new session.
 type StartOptions struct {
-	Cwd        string
-	Cols, Rows int
-	Wrapper    []string
+	Cwd             string
+	Cols, Rows      int
+	Wrapper         []string
+	Title, Subtitle string
 }
 
 // requireEmptyDir refuses a directory that exists and holds anything, so a
@@ -56,6 +57,7 @@ func Start(dir string, o StartOptions, stdout io.Writer) (err error) {
 	if err != nil {
 		return err
 	}
+	s.Title, s.Subtitle = o.Title, o.Subtitle
 	cwd := o.Cwd
 	if cwd == "" && len(o.Wrapper) == 0 {
 		if cwd, err = os.Getwd(); err != nil {
@@ -92,6 +94,9 @@ func Start(dir string, o StartOptions, stdout io.Writer) (err error) {
 	}
 	if _, err := s.waitFor(10*time.Second, func(st Status) bool { return st.Seq >= 2 }); err != nil {
 		return fmt.Errorf("the shell did not clear: %w", err)
+	}
+	if err := s.markFresh(); err != nil {
+		return err
 	}
 	if err := s.save(); err != nil {
 		return err
@@ -146,7 +151,8 @@ func (s *Session) send(text string, keys ...string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := s.tmux("set-option", "-t", window, "@movie_sent", strconv.Itoa(st.Seq)); err != nil {
+	if _, err := s.tmux("set-option", "-t", window, "@movie_sent", strconv.Itoa(st.Seq), ";",
+		"set-option", "-t", window, freshOption, "0"); err != nil {
 		return err
 	}
 	if err := s.typeText(text); err != nil {
@@ -204,7 +210,22 @@ const filmOffAck = "@movie_film_ack"
 // cannot race that last filmed screen.
 func SetFilm(s *Session, on bool) error {
 	if on {
-		_, err := s.tmux("set-option", "-t", window, "@movie_film", "on")
+		st, err := s.status(false)
+		if err != nil {
+			return err
+		}
+		if st.Film {
+			return nil // already filming: no new take
+		}
+		number, err := s.tmux("display-message", "-p", "-t", window, "#{"+takeOption+"}")
+		if err != nil {
+			return err
+		}
+		take, _ := strconv.Atoi(strings.TrimSpace(number))
+		// a take that has just started has had no input yet
+		_, err = s.tmux("set-option", "-t", window, "@movie_film", "on", ";",
+			"set-option", "-t", window, freshOption, "1", ";",
+			"set-option", "-t", window, takeOption, strconv.Itoa(take+1))
 		return err
 	}
 	st, err := s.status(false)
@@ -242,13 +263,23 @@ type Outcome struct {
 
 // RunCommand types command at a prompt, presses Enter, and waits for the
 // next prompt.
-func RunCommand(s *Session, command string, timeout time.Duration, stdout io.Writer) (int, error) {
+// With say, the command starts a new narrated beat: the current take is cut
+// unless nothing has run in it yet, and say becomes the new take's narration.
+func RunCommand(s *Session, command, say string, timeout time.Duration, stdout io.Writer) (int, error) {
 	st, err := s.status(false)
 	if err != nil {
 		return exitcode.Usage, err
 	}
 	if !st.AtPrompt() {
 		return exitcode.Usage, fmt.Errorf("the shell is not at a prompt (%s is running): use wait, or key C-c", st.Command)
+	}
+	if say != "" {
+		if err := s.beginBeat(say); err != nil {
+			return exitcode.Usage, err
+		}
+		if st, err = s.status(false); err != nil {
+			return exitcode.Usage, err
+		}
 	}
 	// The absolute line (history plus screen row) the command is typed on,
 	// so what run prints can start there even if the output scrolls.
@@ -348,6 +379,49 @@ func Stop(s *Session, outdir string, px image.Point, stdout io.Writer) error {
 		}
 	}
 	return Render(s.Dir, outdir, px, stdout)
+}
+
+// freshOption is set while the current take has had no input yet, so a
+// narrated beat starting there needs no cut of its own. takeOption numbers
+// the current take: 1 at start, one more each time filming turns back on.
+const (
+	freshOption = "@movie_fresh"
+	takeOption  = "@movie_take"
+)
+
+func (s *Session) markFresh() error {
+	_, err := s.tmux("set-option", "-t", window, freshOption, "1", ";",
+		"set-option", "-t", window, takeOption, "1")
+	return err
+}
+
+// beginBeat starts a narrated beat: it cuts to a new take unless the current
+// one is still fresh, then records say with the time, so rendering can give
+// the sentence to the take it was spoken in.
+func (s *Session) beginBeat(say string) error {
+	fresh, err := s.tmux("display-message", "-p", "-t", window, "#{"+freshOption+"}")
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(fresh) != "1" {
+		if err := Cut(s); err != nil {
+			return err
+		}
+	}
+	number, err := s.tmux("display-message", "-p", "-t", window, "#{"+takeOption+"}")
+	if err != nil {
+		return err
+	}
+	take, err := strconv.Atoi(strings.TrimSpace(number))
+	if err != nil {
+		return fmt.Errorf("unreadable take number %q", number)
+	}
+	f, err := os.OpenFile(filepath.Join(s.Dir, "beats.jsonl"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return json.NewEncoder(f).Encode(Beat{Take: take, Say: say})
 }
 
 // Cut ends the current take, holding its last screen as film off does, and

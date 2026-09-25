@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prime-radiant-inc/proving-it-works/internal/scene"
 	"github.com/prime-radiant-inc/proving-it-works/internal/term"
 	"github.com/prime-radiant-inc/proving-it-works/internal/testmedia"
 )
@@ -424,24 +425,6 @@ func TestCutStartsANewTakeHoldingTheResult(t *testing.T) {
 	}
 }
 
-// stop prints each take as a scene entry to paste into a scene file.
-func TestStopPrintsReadyToPasteScenes(t *testing.T) {
-	dir := t.TempDir()
-	session := startSession(t, dir)
-	runMovie(t, dir, "term", "run", session, "echo one")
-	runMovie(t, dir, "term", "cut", session)
-	runMovie(t, dir, "term", "run", session, "echo two")
-	takes := filepath.Join(dir, "takes")
-	r := runMovie(t, dir, "term", "stop", session, takes)
-	for i := 1; i <= 2; i++ {
-		// the movie ran in dir, so the frames path is shown relative to it
-		want := fmt.Sprintf("  - id: take-%d\n    frames: takes/take-%d\n    narration_at: end\n", i, i)
-		if !strings.Contains(r.stdout, want) {
-			t.Errorf("missing scene entry %q in:\n%s", want, r.stdout)
-		}
-	}
-}
-
 // Time the agent spends deciding its next command, with the shell waiting at
 // a prompt, is cut to the hold; the take keeps only what the program did.
 func TestThinkingTimeBetweenCommandsIsCutFromTheTake(t *testing.T) {
@@ -489,13 +472,60 @@ func TestRunPrintsOutputThatScrolledOffTheScreen(t *testing.T) {
 	}
 }
 
-// stop's scene entries use paths as short as the agent typed them.
-func TestStopPrintsRelativeFramePathsWhenShorter(t *testing.T) {
+// --say makes a command the start of a narrated beat, and stop writes a
+// scene file ready to build: a title card, then one scene per take.
+func TestSayWritesAReadySceneFile(t *testing.T) {
 	dir := t.TempDir()
-	session := startSession(t, dir)
-	runMovie(t, dir, "term", "run", session, "echo hi")
-	r := runMovie(t, dir, "term", "stop", "session", "takes")
-	if !strings.Contains(r.stdout, "    frames: takes/take-1\n") {
-		t.Fatalf("want a relative frames path:\n%s", r.stdout)
+	session := startSession(t, dir, "--title", "todo", "--subtitle", "proven on camera")
+	runMovie(t, dir, "term", "run", session, "echo one", "--say", "First, one.")
+	runMovie(t, dir, "term", "run", session, "echo extra")
+	runMovie(t, dir, "term", "run", session, "echo two", "--say", "Then: two.")
+	r := runMovie(t, dir, "term", "stop", session, "takes")
+	if r.code != 0 || !strings.Contains(r.stdout, "movie build takes/scenes.yaml") {
+		t.Fatalf("stop: code %d\n%s%s", r.code, r.stdout, r.stderr)
+	}
+	raw, _ := os.ReadFile(filepath.Join(dir, "takes", "scenes.yaml"))
+	if !strings.Contains(string(raw), "frames: take-1\n") {
+		t.Errorf("frames paths should be relative to the scene file:\n%s", raw)
+	}
+	f, err := scene.Load(filepath.Join(dir, "takes", "scenes.yaml"))
+	if err != nil {
+		t.Fatalf("the written scene file does not load: %v", err)
+	}
+	if f.Width != 1600 || f.Height != 900 || len(f.Scenes) != 3 {
+		t.Fatalf("size %dx%d, %d scenes, want 1600x900 and 3", f.Width, f.Height, len(f.Scenes))
+	}
+	title, one, two := f.Scenes[0], f.Scenes[1], f.Scenes[2]
+	if title.Kind != scene.Card || title.Title != "todo" || title.Subtitle != "proven on camera" {
+		t.Errorf("title scene %+v", title)
+	}
+	if one.Narration != "First, one." || !one.NarrationAtEnd || one.Source != filepath.Join(dir, "takes", "take-1") {
+		t.Errorf("first take scene %+v", one)
+	}
+	if two.Narration != "Then: two." || !two.NarrationAtEnd {
+		t.Errorf("second take scene %+v", two)
+	}
+}
+
+func TestTheWrittenSceneFileBuilds(t *testing.T) {
+	requirePiper(t)
+	dir := t.TempDir()
+	session := startSession(t, dir, "--title", "proof")
+	runMovie(t, dir, "term", "run", session, "echo built", "--say", "It builds.")
+	runMovie(t, dir, "term", "stop", session, "takes")
+	if r := runMovie(t, dir, "build", "takes/scenes.yaml", "proof.mp4"); r.code != 0 {
+		t.Fatalf("build: code %d\n%s%s", r.code, r.stdout, r.stderr)
+	}
+}
+
+// The prompt shows the directory's own name, not a path that wraps.
+func TestThePromptShowsOnlyTheDirectoryName(t *testing.T) {
+	dir := t.TempDir()
+	project := filepath.Join(dir, "project")
+	os.MkdirAll(project, 0o755)
+	session := startSession(t, dir, "--cwd", project)
+	r := runMovie(t, dir, "term", "run", session, "true")
+	if !strings.Contains(r.stdout, "project $ true") || strings.Contains(r.stdout, dir) {
+		t.Fatalf("want a short prompt:\n%s", r.stdout)
 	}
 }

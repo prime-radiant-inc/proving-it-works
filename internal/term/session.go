@@ -23,6 +23,9 @@ type Session struct {
 	Socket  string   `json:"socket"`
 	History string   `json:"history"`
 	Wrapper []string `json:"wrapper,omitempty"`
+	// Title and Subtitle become the title card of the scene file stop writes.
+	Title    string `json:"title,omitempty"`
+	Subtitle string `json:"subtitle,omitempty"`
 }
 
 // newSession names a session's socket and history. The socket lives in /tmp
@@ -132,7 +135,7 @@ func shellCommand(history string, scrub []string) string {
 		"TERM=xterm-256color",
 		"BASH_SILENCE_DEPRECATION_WARNING=1",
 		"HISTFILE="+quote(history),
-		"PS1="+quote(`\w \$ `),
+		"PS1="+quote(`\W \$ `), // the directory's own name: a full path wraps and fills the frame
 		"PROMPT_COMMAND="+quote(prompt),
 		"bash --noprofile --norc -i",
 	)
