@@ -20,7 +20,10 @@ type Entry struct {
 	CursorX int     `json:"cx"`
 	CursorY int     `json:"cy"`
 	Cursor  bool    `json:"cursor"`
-	Screen  string  `json:"screen"`
+	// Waiting is set while the shell sits at a prompt waiting for the next
+	// command: the time the agent driving it spends thinking.
+	Waiting bool   `json:"waiting,omitempty"`
+	Screen  string `json:"screen"`
 }
 
 func now() float64 { return float64(time.Now().UnixNano()) / 1e9 }
@@ -67,7 +70,8 @@ func Record(dir string, log io.Writer) error {
 		}
 		failures = 0
 		e := Entry{T: now(), Film: st.Film, Cols: st.Cols, Rows: st.Rows,
-			CursorX: st.CursorX, CursorY: st.CursorY, Cursor: st.CursorVisible, Screen: st.Screen}
+			CursorX: st.CursorX, CursorY: st.CursorY, Cursor: st.CursorVisible,
+			Waiting: st.AtPrompt(), Screen: st.Screen}
 		if st.Stop {
 			// Flush the final screen unconditionally, even if it looks like
 			// the last snapshot, and hold it before ending the take.

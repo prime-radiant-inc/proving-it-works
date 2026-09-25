@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -157,5 +158,41 @@ func TestMissingGlyphsAreReportedNotHidden(t *testing.T) {
 	}
 	if len(r.missing) != 1 || r.missing[0] != '🦀' {
 		t.Fatalf("missing %q", r.missing)
+	}
+}
+
+// While the shell sits at a prompt waiting for the next command, the agent
+// driving it is thinking; that time is not the program's and is cut to the
+// hold. Time a command spends running is never shortened.
+func TestTightenCapsTimeSpentWaitingAtAPrompt(t *testing.T) {
+	take := Take{Start: 100, End: 121.5, Entries: []Entry{
+		{T: 100, Waiting: true, Screen: "$ "},             // idle before the first command: 5 s
+		{T: 105, Screen: "$ make"},                        // typing: 1 s
+		{T: 106, Screen: "$ make\nbuilding"},              // running: 1 s
+		{T: 107, Waiting: true, Screen: "$ make\nok\n$ "}, // result, then the agent thinks: 13 s
+		{T: 120, Waiting: true, Screen: "$ make\nok\n$ "}, // film off's flush and hold: 1.5 s
+	}}
+	got := Tighten(take, 1.5)
+	wantT := []float64{100, 101.5, 102.5, 103.5, 105}
+	for i, e := range got.Entries {
+		if math.Abs(e.T-wantT[i]) > 1e-9 {
+			t.Errorf("entry %d at %v, want %v", i, e.T, wantT[i])
+		}
+	}
+	if math.Abs(got.End-105) > 1e-9 {
+		t.Errorf("take ends at %v, want 105 (the result held 1.5 s)", got.End)
+	}
+}
+
+func TestSettledIsWhenTheScreenLastChanged(t *testing.T) {
+	take := Take{Start: 10, End: 16, Entries: []Entry{
+		{T: 10, Screen: "$ "}, {T: 11, Screen: "$ ls"}, {T: 12.5, Screen: "$ ls\na b\n$ "},
+		{T: 14, Screen: "$ ls\na b\n$ "},
+	}}
+	if got := Settled(take); math.Abs(got-2.5) > 1e-9 {
+		t.Errorf("settled at %v, want 2.5", got)
+	}
+	if got := Settled(Take{Start: 3, End: 5, Entries: []Entry{{T: 3, Screen: "$ "}}}); got != 0 {
+		t.Errorf("a take that never changes settles at 0, got %v", got)
 	}
 }

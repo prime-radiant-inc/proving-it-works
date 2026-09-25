@@ -67,15 +67,17 @@ func TestTermFilmsACommandIntoFrames(t *testing.T) {
 	if len(frames) < 15 {
 		t.Fatalf("take-1 has %d frames, want at least 15 (the final screen held 1.5s)", len(frames))
 	}
-	// take.json is a paste-ready frames scene body: frames and rate, nothing else.
+	// take.json records where the frames are, their rate, and when the
+	// screen settled on the result.
 	var take map[string]any
 	data, err := os.ReadFile(filepath.Join(takes, "take-1", "take.json"))
 	if err != nil || json.Unmarshal(data, &take) != nil {
 		t.Fatalf("take.json: %s %v", data, err)
 	}
 	wantFrames, _ := filepath.Abs(filepath.Join(takes, "take-1"))
-	if len(take) != 2 || take["rate"] != float64(10) || take["frames"] != wantFrames {
-		t.Fatalf("take.json = %s, want exactly frames %q and rate 10", data, wantFrames)
+	settled, ok := take["settled"].(float64)
+	if len(take) != 3 || take["rate"] != float64(10) || take["frames"] != wantFrames || !ok || settled <= 0 {
+		t.Fatalf("take.json = %s, want frames %q, rate 10, and a positive settled time", data, wantFrames)
 	}
 
 	// The last non-end entry of the recording is the flush snapshot Stop
@@ -240,8 +242,14 @@ func TestFilmOffRightAfterRunKeepsTheResultAndHoldsIt(t *testing.T) {
 	if last := take.Entries[len(take.Entries)-1]; !hasLine(last.Screen, "RESULT-LINE") {
 		t.Fatalf("the last filmed entry has no line exactly RESULT-LINE:\n%q", last.Screen)
 	}
+	// Rendering cuts waiting-at-a-prompt time to the hold, so the rendered
+	// take still shows the result for the full 1.5 s, and no longer.
+	tight := term.Tighten(take, 1.5)
+	if held := tight.End - tight.Entries[result].T; held < 1.5-1e-6 {
+		t.Fatalf("after tightening the result is on screen for %.2fs, want 1.5s", held)
+	}
 	frames, _ := filepath.Glob(filepath.Join(takes, "take-1", "f*.png"))
-	if want := len(term.Slots(take, term.FPS)); len(frames) != want {
+	if want := len(term.Slots(tight, term.FPS)); len(frames) != want {
 		t.Fatalf("take-1 has %d frames, want %d", len(frames), want)
 	}
 }
@@ -430,5 +438,25 @@ func TestStopPrintsReadyToPasteScenes(t *testing.T) {
 		if !strings.Contains(r.stdout, want) {
 			t.Errorf("missing scene entry %q in:\n%s", want, r.stdout)
 		}
+	}
+}
+
+// Time the agent spends deciding its next command, with the shell waiting at
+// a prompt, is cut to the hold; the take keeps only what the program did.
+func TestThinkingTimeBetweenCommandsIsCutFromTheTake(t *testing.T) {
+	dir := t.TempDir()
+	session := startSession(t, dir)
+	runMovie(t, dir, "term", "run", session, "echo quick")
+	time.Sleep(4 * time.Second) // an agent thinking between tool calls
+	runMovie(t, dir, "term", "run", session, "echo again")
+	takes := filepath.Join(dir, "takes")
+	if r := runMovie(t, dir, "term", "stop", session, takes); r.code != 0 {
+		t.Fatalf("stop: %s", r.stderr)
+	}
+	frames, _ := filepath.Glob(filepath.Join(takes, "take-1", "f*.png"))
+	// two short commands typed and run, each result held at most 1.5 s: well
+	// under the 4 s of thinking plus everything else
+	if len(frames) > 70 {
+		t.Fatalf("take-1 has %d frames (%.1f s): thinking time was filmed", len(frames), float64(len(frames))/10)
 	}
 }

@@ -59,6 +59,48 @@ func Takes(entries []Entry) []Take {
 	return takes
 }
 
+// Tighten caps each stretch the shell spends waiting at a prompt for the
+// next command at maxWait seconds, counting consecutive waiting snapshots of
+// the same screen as one stretch. That time belongs to the agent deciding
+// what to type, not to the program; time a command spends running is never
+// shortened.
+func Tighten(t Take, maxWait float64) Take {
+	out := Take{Start: t.Start, Entries: make([]Entry, len(t.Entries))}
+	shift, waited := 0.0, 0.0
+	for i, e := range t.Entries {
+		next := t.End
+		if i+1 < len(t.Entries) {
+			next = t.Entries[i+1].T
+		}
+		span := next - e.T
+		if !e.Waiting || i == 0 || !t.Entries[i-1].Waiting || t.Entries[i-1].Screen != e.Screen {
+			waited = 0
+		}
+		keep := span
+		if e.Waiting {
+			keep = math.Max(0, math.Min(span, maxWait-waited))
+			waited += keep
+		}
+		e.T -= shift
+		out.Entries[i] = e
+		shift += span - keep
+	}
+	out.End = t.End - shift
+	return out
+}
+
+// Settled is how many seconds into a take its screen last changed: where
+// the take's result has appeared, or 0 if the screen never changes.
+func Settled(t Take) float64 {
+	settled := 0.0
+	for i := 1; i < len(t.Entries); i++ {
+		if t.Entries[i].Screen != t.Entries[i-1].Screen {
+			settled = t.Entries[i].T - t.Start
+		}
+	}
+	return settled
+}
+
 // Slots returns, for each frame of a take at fps, the index of the entry on
 // screen at that moment.
 func Slots(t Take, fps float64) []int {
@@ -121,6 +163,7 @@ func Render(dir, outdir string, px image.Point, stdout io.Writer) error {
 	r := newRenderer(px, first.Cols, first.Rows)
 	var scenes strings.Builder
 	for i, t := range takes {
+		t = Tighten(t, hold)
 		name := fmt.Sprintf("take-%d", i+1)
 		takeDir, err := filepath.Abs(filepath.Join(outdir, name))
 		if err != nil {
@@ -142,7 +185,8 @@ func Render(dir, outdir string, px image.Point, stdout io.Writer) error {
 				return err
 			}
 		}
-		meta, _ := json.MarshalIndent(map[string]any{"frames": takeDir, "rate": FPS}, "", "  ")
+		meta, _ := json.MarshalIndent(map[string]any{"frames": takeDir, "rate": FPS,
+			"settled": math.Round(Settled(t)*1000) / 1000}, "", "  ")
 		if err := os.WriteFile(filepath.Join(takeDir, "take.json"), meta, 0o644); err != nil {
 			return err
 		}
