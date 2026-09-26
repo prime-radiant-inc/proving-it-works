@@ -13,6 +13,7 @@ import (
 	"github.com/prime-radiant-inc/proving-it-works/internal/cdp"
 	"github.com/prime-radiant-inc/proving-it-works/internal/cli"
 	"github.com/prime-radiant-inc/proving-it-works/internal/film"
+	"github.com/prime-radiant-inc/proving-it-works/internal/jsonl"
 )
 
 // scale is the device pixels per CSS pixel the page is filmed at: a
@@ -103,9 +104,11 @@ func Start(dir, url string, o StartOptions, stdout io.Writer) (err error) {
 		return err
 	}
 	defer p.close()
+	began := film.Now()
 	if err := p.navigate(url); err != nil {
 		return err
 	}
+	s.waitForPicture(began)
 	if err := s.set().Roll(); err != nil {
 		return err
 	}
@@ -150,6 +153,24 @@ func (s *Session) fitViewport(width, height int) error {
 		time.Sleep(50 * time.Millisecond)
 	}
 	return fmt.Errorf("the browser would not size its viewport to %dx%d (it is %dx%d)", width, height, inner.W, inner.H)
+}
+
+// waitForPicture waits, for at most 2 s, until the recorder has filmed the
+// page as it now is: a frame painted since since, then none for 0.3 s. A
+// page can be loaded and its document quiet before its first paint reaches
+// the screencast, and filming that starts then would open on the blank page
+// from before the load. A page that paints the same picture as before makes
+// no new frame, and just waits out the 2 s.
+func (s *Session) waitForPicture(since float64) {
+	path := filepath.Join(s.Dir, "frames.jsonl")
+	cli.WaitFor(2*time.Second, func() bool {
+		frames, err := jsonl.Read[film.Frame](path)
+		if err != nil || len(frames) == 0 {
+			return false
+		}
+		last := frames[len(frames)-1].T
+		return last > since && film.Now()-last >= 0.3
+	})
 }
 
 // loadFailed is the failure for a URL the browser could not load, such as
