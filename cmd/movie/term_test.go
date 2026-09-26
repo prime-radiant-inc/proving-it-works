@@ -500,10 +500,10 @@ func TestSayWritesAReadySceneFile(t *testing.T) {
 	if title.Kind != scene.Card || title.Title != "todo" || title.Subtitle != "proven on camera" {
 		t.Errorf("title scene %+v", title)
 	}
-	if one.Narration != "First, one." || !one.NarrationAtEnd || one.Source != filepath.Join(dir, "takes", "take-1") {
+	if one.Narration != "First, one." || one.NarrationAtEnd || one.Source != filepath.Join(dir, "takes", "take-1") {
 		t.Errorf("first take scene %+v", one)
 	}
-	if two.Narration != "Then: two." || !two.NarrationAtEnd {
+	if two.Narration != "Then: two." || two.NarrationAtEnd {
 		t.Errorf("second take scene %+v", two)
 	}
 	// --say ends its beat: "echo extra", run after the first beat was

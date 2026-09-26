@@ -309,8 +309,8 @@ func TestBrowseFilmOffLeavesActionsOutOfTheMovie(t *testing.T) {
 		t.Fatalf("want the take before film off and the one after film on, both narrated:\n%s", r.stdout)
 	}
 	scenes, _ := os.ReadFile(filepath.Join(takes, "scenes.yaml"))
-	if !strings.Contains(string(scenes), "id: take-2\n    frames: take-2\n    narration_at: end\n    narration: Both are saved.") {
-		t.Errorf("the sentence said after film on belongs to take 2:\n%s", scenes)
+	if !strings.Contains(string(scenes), "id: take-2\n    frames: take-2\n    narration: Both are saved.") {
+		t.Errorf("the sentence said after film on belongs to take 2, and plays from its start:\n%s", scenes)
 	}
 	// take 2 opens on the result of what happened off camera
 	if first, second := readPNG(t, filepath.Join(takes, "take-1", "f00000.png")), readPNG(t, filepath.Join(takes, "take-2", "f00000.png")); samePicture(first, second) {

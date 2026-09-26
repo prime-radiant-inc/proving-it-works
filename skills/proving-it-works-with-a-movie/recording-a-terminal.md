@@ -23,18 +23,21 @@ the prompt, and prints the command's exit code and output, so you see what
 happened without looking at a frame.
 
 **`--say` is how you narrate.** It ends a beat: the sentence narrates
-everything since the previous `--say`, and plays over this command's
-result. So do the work, then say what it proved: above, `add write the
-report` runs unnarrated and `done 1 --say "Add a second, and mark the first
-one done."` narrates both. Say what the beat proves ("the tests pass"), not
-what is being typed.
+everything since the previous `--say`, and plays from the beat's start,
+over the commands as they run. So do the work, then say what it proved:
+above, `add write the report` runs unnarrated and `done 1 --say "Add a
+second, and mark the first one done."` narrates both. Say what the beat
+proves ("the tests pass"), not what is being typed. Keep beats to a
+command or two, so the words play while the work is on screen.
 
 **`stop` writes the scene file.** `scenes.yaml` beside the takes holds the
 title card (from `start --title`), then one scene per beat with its
-sentence, set to play over the beat's result: the narration never starts
-before the result is on screen, and the result stays up until it finishes.
-It is an ordinary scene file (assembling.md): reword it, or add image, card,
-or movie scenes, before you build.
+sentence, starting with the beat. When a long beat's sentence is about
+output that only appears at its end, such as a slow test run, add
+`narration_at: end` to that scene: the narration then never starts before
+the result is on screen, and the result stays up until it finishes. It is
+an ordinary scene file (assembling.md): reword it, or add image, card, or
+movie scenes, before you build.
 
 Time the shell spends waiting at a prompt for your next command is cut to
 1.5 seconds, so pausing to think between commands never puts dead air in

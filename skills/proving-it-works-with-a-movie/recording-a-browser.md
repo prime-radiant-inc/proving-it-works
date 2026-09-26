@@ -39,15 +39,19 @@ exits 1 and names what covers it. It does not click through.
 
 **`--say` is how you narrate.** It works on `goto`, `click`, `type`,
 `press`, and `wait`, and it ends a beat: the sentence narrates everything
-since the previous `--say` and plays over this action's result. Put it on
-the action whose result proves the point. That is usually the `wait` for
-the result, not the click that asked for it. Above, the sentence would play
-over a page still saving if it were on the `click`. `--say` needs filming
-on; with it off, nothing would show what the sentence describes.
+since the previous `--say` and plays from the beat's start, over the
+actions it describes. Put it on the action whose result proves the point.
+That is usually the `wait` for the result, not the click that asked for
+it. Above, on the `click`, the beat would end before the page saved. Keep
+beats to an action or two, so the words play while it happens: a long
+beat is silent once its sentence ends. `--say` needs filming on; with it
+off, nothing would show what the sentence describes.
 
 **`stop` writes the scene file**: the title card, then one scene per beat
-with its sentence, set to play over the beat's result. It is an ordinary
-scene file (assembling.md), so edit it before you build.
+with its sentence, starting with the beat. When a long beat's sentence is
+about a result that only appears at its end, add `narration_at: end` to
+that scene, so the words land on the result. It is an ordinary scene file
+(assembling.md), so edit it before you build.
 
 Time the page spends waiting for your next action, holding still, is cut to
 1.5 seconds, so pausing to think puts no dead air in the movie. A page that

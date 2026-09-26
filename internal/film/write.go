@@ -89,12 +89,11 @@ func Write(outdir string, m Movie, takes []Take, beats []Beat, draw func(Shot) (
 // narrated where the agent said something, with paths relative to the file.
 func writeScenes(path string, m Movie, takes, says []string) error {
 	type sceneOut struct {
-		ID          string `yaml:"id"`
-		Card        string `yaml:"card,omitempty"`
-		Subtitle    string `yaml:"subtitle,omitempty"`
-		Frames      string `yaml:"frames,omitempty"`
-		NarrationAt string `yaml:"narration_at,omitempty"`
-		Narration   string `yaml:"narration,omitempty"`
+		ID        string `yaml:"id"`
+		Card      string `yaml:"card,omitempty"`
+		Subtitle  string `yaml:"subtitle,omitempty"`
+		Frames    string `yaml:"frames,omitempty"`
+		Narration string `yaml:"narration,omitempty"`
 	}
 	file := struct {
 		Size   string     `yaml:"size"`
@@ -104,7 +103,7 @@ func writeScenes(path string, m Movie, takes, says []string) error {
 		file.Scenes = append(file.Scenes, sceneOut{ID: "title", Card: m.Title, Subtitle: m.Subtitle})
 	}
 	for i, name := range takes {
-		file.Scenes = append(file.Scenes, sceneOut{ID: name, Frames: name, NarrationAt: "end", Narration: says[i]})
+		file.Scenes = append(file.Scenes, sceneOut{ID: name, Frames: name, Narration: says[i]})
 	}
 	var data bytes.Buffer
 	enc := yaml.NewEncoder(&data)

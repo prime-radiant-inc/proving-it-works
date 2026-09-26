@@ -42,8 +42,9 @@ before doing any work and lists every problem at once.
 Each scene lasts **max(narration, visuals)**. Short video freezes its last
 frame; short audio pads with silence. Narration starts with its scene; with
 `narration_at: end` it is delayed so it ends as the visuals end, and its
-subtitles move with it (use it where the scene's payoff comes last, as in a
-terminal take). For a `movie term` take it also never starts before the
+subtitles move with it. Leave narration at the start, over the action it
+describes, unless the words are about a payoff that comes last in a long
+scene. For a `movie term` take it also never starts before the
 take's result appears, holding the result on screen while it finishes. A `movie` scene lasts as long as the
 movie and keeps its own sound; it takes no narration.
 

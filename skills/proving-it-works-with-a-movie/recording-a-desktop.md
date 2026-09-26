@@ -60,6 +60,14 @@ take. Say it once the result proving the point is on screen and you have
 seen it in a shot. For slow work, such as a render: `wait --quiet 2
 --timeout 120`, `shot`, then `say`.
 
+**Keep beats short.** The sentence plays from the start of its beat, over
+the clicks it describes. So `say` after a step or two (`2 + 2 =`), not
+after a whole session: a long beat is silent once its sentence ends, and
+would speak the result before it is on screen. When a long beat can't be
+split and its sentence is about the result at its end, add
+`narration_at: end` to that scene in `scenes.yaml`, so the words land on
+the result.
+
 Time spent waiting for your next action while the screen holds still is cut
 to 1.5 seconds, so looking and thinking leave no dead air. Time the app
 spends working is kept.
