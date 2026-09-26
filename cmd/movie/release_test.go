@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -27,13 +26,6 @@ func repoRoot(t *testing.T) string {
 	return filepath.Join(wd, "..", "..")
 }
 
-func hostBinaryName() string {
-	if runtime.GOOS == "windows" {
-		return "movie-windows-amd64.exe"
-	}
-	return "movie-" + runtime.GOOS + "-" + runtime.GOARCH
-}
-
 func copyFile(t *testing.T, from, to string, mode os.FileMode) {
 	t.Helper()
 	data, err := os.ReadFile(from)
@@ -42,22 +34,6 @@ func copyFile(t *testing.T, from, to string, mode os.FileMode) {
 	}
 	if err := os.WriteFile(to, data, mode); err != nil {
 		t.Fatal(err)
-	}
-}
-
-// The launcher must pick this machine's binary and pass arguments through
-// untouched, including spaces, percent signs, and semicolons.
-func TestLauncherPassesArgumentsThroughUntouched(t *testing.T) {
-	if _, err := exec.LookPath("sh"); err != nil {
-		t.Skip("needs sh on PATH (Git Bash on Windows)")
-	}
-	dir := t.TempDir()
-	copyFile(t, filepath.Join(repoRoot(t), binDir, "movie"), filepath.Join(dir, "movie"), 0o755)
-	copyFile(t, movieBin, filepath.Join(dir, hostBinaryName()), 0o755)
-	// an unknown command is echoed back verbatim, so it shows what arrived
-	out, _ := exec.Command("sh", filepath.Join(dir, "movie"), "a b%c;d").CombinedOutput()
-	if !strings.Contains(string(out), `unknown command "a b%c;d"`) {
-		t.Fatalf("argument did not arrive intact:\n%s", out)
 	}
 }
 

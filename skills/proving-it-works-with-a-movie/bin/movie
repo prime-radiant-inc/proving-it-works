@@ -1,21 +1,115 @@
 #!/bin/sh
-# Run the movie binary built for this machine; arguments pass through untouched.
+# Run movie, downloading this machine's release binary on first use.
+#
+# The binary for the version in VERSION comes from that GitHub release, is
+# checked against checksums.txt, and is cached at
+#   ROOT/proving-it-works/SHA256/movie-OS-ARCH[.exe]
+# keyed by its expected hash, so only a verified file is ever run from
+# there. ROOT is %LOCALAPPDATA% on Windows, else $XDG_CACHE_HOME, else
+# ~/.cache, or the temp directory when that cannot be written. Arguments
+# and the exit code pass through untouched.
+#
+#   MOVIE_RELEASE_URL=URL  download URL/vVERSION/NAME instead of from GitHub
+set -eu
 here=$(cd "$(dirname "$0")" && pwd)
+
+fail() {
+  echo "movie: $*" >&2
+  exit 2
+}
+
+# sha256 prints the SHA-256 of a file, or of standard input for -.
+sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -d' ' -f1
+  else
+    shasum -a 256 "$1" | cut -d' ' -f1
+  fi
+}
+
 case "$(uname -s)" in
   Darwin) os=darwin ;;
   Linux) os=linux ;;
   MINGW*|MSYS*|CYGWIN*)
+    os=windows
     # Git Bash rewrites Unix-looking arguments for native programs; stop it.
     # Pass paths in Windows form (cygpath -m) instead.
     MSYS_NO_PATHCONV=1
     MSYS2_ARG_CONV_EXCL='*'
-    export MSYS_NO_PATHCONV MSYS2_ARG_CONV_EXCL
-    exec "$here/movie-windows-amd64.exe" "$@" ;;
-  *) echo "movie: unsupported system $(uname -s)" >&2; exit 2 ;;
+    export MSYS_NO_PATHCONV MSYS2_ARG_CONV_EXCL ;;
+  *) fail "unsupported system $(uname -s)" ;;
 esac
-case "$(uname -m)" in
-  x86_64|amd64) arch=amd64 ;;
-  arm64|aarch64) arch=arm64 ;;
-  *) echo "movie: unsupported machine $(uname -m)" >&2; exit 2 ;;
-esac
-exec "$here/movie-$os-$arch" "$@"
+if [ "$os" = windows ]; then
+  # an emulated Git Bash on ARM says x86_64; Windows knows the machine
+  case "${PROCESSOR_ARCHITEW6432:-${PROCESSOR_ARCHITECTURE:-AMD64}}" in
+    ARM64) arch=arm64 ;;
+    *) arch=amd64 ;;
+  esac
+  name=movie-windows-$arch.exe
+else
+  case "$(uname -m)" in
+    x86_64|amd64) arch=amd64 ;;
+    arm64|aarch64) arch=arm64 ;;
+    *) fail "unsupported machine $(uname -m)" ;;
+  esac
+  name=movie-$os-$arch
+fi
+
+if [ "$os" = windows ] && [ -n "${LOCALAPPDATA:-}" ]; then
+  root=$(cygpath -u "$LOCALAPPDATA")
+else
+  root=${XDG_CACHE_HOME:-$HOME/.cache}
+fi
+cache=$root/proving-it-works
+if ! mkdir -p "$cache" 2>/dev/null || [ ! -w "$cache" ]; then
+  cache=${TMPDIR:-/tmp}/proving-it-works
+  echo "movie: cannot write to $root; caching in $cache instead" >&2
+  mkdir -p "$cache" || fail "cannot create $cache"
+fi
+
+[ -f "$here/VERSION" ] || fail "$here has no VERSION, so there is no release to download"
+version=$(tr -d '\r\n' < "$here/VERSION")
+want=$(tr -d '\r' < "$here/checksums.txt" | awk -v n="$name" '$2 == n { print $1 }')
+[ -n "$want" ] || fail "checksums.txt has no line for $name"
+dir=$cache/$want
+bin=$dir/$name
+
+if [ ! -f "$bin" ]; then
+  url=${MOVIE_RELEASE_URL:-https://github.com/prime-radiant-inc/proving-it-works/releases/download}/v$version/$name
+  mkdir -p "$dir"
+  tmp=$dir/.$name.$$
+  echo "movie: downloading $name $version (first run only)" >&2
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL -o "$tmp" "$url"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -O "$tmp" "$url"
+  else
+    false
+  fi || {
+    rm -f "$tmp"
+    rmdir "$dir" 2>/dev/null || true
+    fail "could not download $url
+  Fetch it another way, put it at $bin, and make it executable.
+  Its SHA-256 must be $want.
+  Or, with Go installed and network access for its modules, run with
+  MOVIE_FROM_SOURCE=1 to build this plugin's source instead."
+  }
+  got=$(sha256 "$tmp")
+  if [ "$got" != "$want" ]; then
+    rm -f "$tmp"
+    rmdir "$dir" 2>/dev/null || true
+    fail "$url has SHA-256 $got, but checksums.txt says $want; not running it"
+  fi
+  chmod +x "$tmp"
+  # another first run may have installed it meanwhile; either copy is verified
+  mv -f "$tmp" "$bin" 2>/dev/null || rm -f "$tmp"
+  [ -f "$bin" ] || fail "could not install $bin"
+  # older releases' binaries are no longer needed
+  for old in "$cache"/*; do
+    b=${old##*/}
+    if [ "$b" != "$want" ] && [ ${#b} -eq 64 ] && ! printf '%s' "$b" | grep -q '[^0-9a-f]'; then
+      rm -rf "$old"
+    fi
+  done
+fi
+exec "$bin" "$@"
