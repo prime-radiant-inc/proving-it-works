@@ -20,7 +20,8 @@ never see an update.
 The repo carries the Go source, the launchers, and two small committed
 files: `BIN/VERSION` and `BIN/checksums.txt` (the SHA-256 of each
 platform's binary for that version). The binaries live on the GitHub
-release `vVERSION`. On first run the launcher downloads the one binary it
+release `vVERSION`, one per platform: macOS, Linux, and Windows, each on
+x86-64 and ARM64. On first run the launcher downloads the one binary it
 needs, verifies it against `checksums.txt`, caches it, and runs it.
 
 There is one version: `everyharness.yaml`'s, which everyharness copies into
@@ -51,9 +52,10 @@ could change both.
 `BIN/movie` (sh: macOS, Linux, and Windows through Git Bash) and
 `BIN/movie.ps1` (Windows PowerShell) do the same thing:
 
-1. Work out the platform. Windows is always `windows-amd64`, as today (it
-   runs under emulation on ARM); elsewhere `darwin|linux` and
-   `amd64|arm64`. Read `BIN/VERSION` and the platform's line of
+1. Work out the platform: `darwin|linux|windows` and `amd64|arm64`. On
+   Windows the architecture comes from `PROCESSOR_ARCHITEW6432`, else
+   `PROCESSOR_ARCHITECTURE` (`AMD64` or `ARM64`), since an emulated Git
+   Bash reports x86_64 on an ARM machine. Read `BIN/VERSION` and the platform's line of
    `BIN/checksums.txt`, stripping any carriage return.
 2. The binary's cache path is `ROOT/proving-it-works/SHA256/movie-OS-ARCH[.exe]`,
    keyed by the expected hash, so only a verified file can ever be at a
@@ -101,12 +103,12 @@ which SKILL.md's PowerShell line will say.
 
 1. Refuses unless the tree is clean, `HEAD` equals `origin/main` after a
    fetch, and `vVERSION` exists neither locally nor on `origin`.
-2. Builds the five binaries with `script/build-binaries` into a temporary
+2. Builds the six binaries with `script/build-binaries` into a temporary
    directory (already reproducible: pinned toolchain, `-trimpath`,
    `-buildvcs=false`), and writes `BIN/checksums.txt` from them.
 3. Sets the version in `everyharness.yaml`, regenerates the harness files
    with everyharness, writes `BIN/VERSION`, and commits.
-4. Creates `vVERSION` as a draft GitHub release with the five binaries
+4. Creates `vVERSION` as a draft GitHub release with the six binaries
    (drafts are not publicly downloadable), pushes the tag and `main`, then
    publishes the draft. If the push fails, it deletes the draft and the
    tag, so nothing public names a commit off `main`.
@@ -116,7 +118,7 @@ which SKILL.md's PowerShell line will say.
 ## Checks
 
 - The release check (`MOVIE_RELEASE_CHECK=1`, run in CI on `main`) builds
-  the five binaries from source and compares their hashes with
+  the six binaries from source and compares their hashes with
   `BIN/checksums.txt`, so `main`'s source always matches what its release
   serves. It replaces today's byte comparison with committed binaries.
 - Launcher tests serve a real binary of the test's platform and a
@@ -143,8 +145,10 @@ One commit, released as the next version:
 - `.gitattributes`: `text eol=lf` for `BIN/VERSION`, `BIN/checksums.txt`,
   and `BIN/movie.ps1`; drops the `BIN/movie-*` binary rule;
 - `.gitignore`: `BIN/movie-*`, so a stray build is never committed;
-- `script/build-binaries`: OUTDIR becomes required, and its header stops
-  saying to commit the result;
+- `script/build-binaries`: OUTDIR becomes required, its header stops
+  saying to commit the result, and it adds `windows/arm64` to the five
+  targets it builds today (`darwin/arm64`, `darwin/amd64`, `linux/amd64`,
+  `linux/arm64`, `windows/amd64`);
 - `cmd/movie/release_test.go`: the freshness test compares hashes, and the
   argument pass-through test runs the new launcher against a local server;
 - `examples/tour/film.sh`: cross-builds its Linux binary with
