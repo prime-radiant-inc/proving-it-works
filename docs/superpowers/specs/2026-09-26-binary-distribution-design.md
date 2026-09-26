@@ -36,8 +36,9 @@ Rejected:
 - Port to TypeScript or Python: a rewrite of about 7,000 lines of Go
   (a font-rendering terminal renderer, a CDP client, PNG work) to move a
   distribution problem, not solve it. ffmpeg is needed either way.
-- Build from source on first run: needs Go on every user's machine. It is
-  kept as a fallback, below.
+- Build from source on first run: needs Go on every user's machine, and
+  network access to fetch modules, so it does not even rescue the offline
+  case. The launcher's error message offers the build command instead.
 
 ## What the checksum protects against
 
