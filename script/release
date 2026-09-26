@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# Release movie: build the six binaries, record their checksums, set the
+# version everywhere, and publish the binaries as the GitHub release
+# vVERSION, which the launchers download from.
+#
+# When: whenever main has changes users should get, skill text included.
+# Claude Code only updates an installed plugin whose version moved.
+#
+# Usage: script/release VERSION        (such as 0.2.0)
+#
+# Needs: gh, logged in with push access; Go; and everyharness, on PATH or as
+# EVERYHARNESS=/path/to/everyharness/dist/cli.js (clone
+# github.com/prime-radiant-inc/everyharness, then npm ci && npm run build).
+#
+# RELEASE_DRY_RUN=1 stops after the local release commit: nothing is
+# tagged, pushed, or published.
+set -euo pipefail
+fail() {
+  echo "release: $*" >&2
+  exit 2
+}
+version=${1:-}
+[[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+  echo "usage: script/release VERSION  (such as 0.2.0)" >&2
+  exit 2
+}
+root=$(cd "$(dirname "$0")/.." && pwd)
+cd "$root"
+bin=skills/proving-it-works-with-a-movie/bin
+tag=v$version
+
+[[ $(git rev-parse --abbrev-ref HEAD) == main ]] || fail "run it on main"
+[[ -z $(git status --porcelain) ]] || fail "the tree has uncommitted changes"
+git fetch -q origin main
+git merge-base --is-ancestor origin/main HEAD || fail "origin/main has commits this main lacks; pull first"
+if git rev-parse -q --verify "refs/tags/$tag" > /dev/null; then
+  fail "$tag already exists here"
+fi
+[[ -z $(git ls-remote --tags origin "refs/tags/$tag") ]] || fail "$tag already exists on origin"
+
+if command -v everyharness > /dev/null 2>&1; then
+  everyharness=(everyharness)
+elif [[ -n ${EVERYHARNESS:-} ]]; then
+  everyharness=(node "$EVERYHARNESS")
+else
+  fail "needs everyharness on PATH, or EVERYHARNESS=/path/to/everyharness/dist/cli.js"
+fi
+
+out=$(mktemp -d)
+trap 'rm -rf "$out"' EXIT
+bash script/build-binaries "$out"
+(
+  cd "$out"
+  if command -v sha256sum > /dev/null 2>&1; then
+    sha256sum movie-*
+  else
+    shasum -a 256 movie-*
+  fi
+) > "$bin/checksums.txt"
+"${everyharness[@]}" bump "$version"
+printf '%s\n' "$version" > "$bin/VERSION"
+git add -u
+git add "$bin/VERSION" "$bin/checksums.txt"
+git commit -q -m "Release $version"
+
+if [[ ${RELEASE_DRY_RUN:-} == 1 ]]; then
+  echo "dry run: committed release $version locally; nothing tagged, pushed, or published"
+  exit 0
+fi
+
+# Publish so that no one can download from a release main does not name:
+# the release stays a draft until main is pushed, and is deleted if that
+# push fails.
+git tag "$tag"
+git push -q origin "$tag"
+gh release create "$tag" --draft --verify-tag --title "$tag" --notes "movie $version" "$out"/movie-*
+if ! git push -q origin main; then
+  gh release delete "$tag" --yes --cleanup-tag
+  git tag -d "$tag"
+  fail "pushing main failed, so the draft release and its tag are deleted; the release commit is still here: pull, then release again"
+fi
+gh release edit "$tag" --draft=false
+
+# Check what users will download against what was committed.
+check=$(mktemp -d)
+while read -r sum name; do
+  curl -fsSL -o "$check/$name" "https://github.com/prime-radiant-inc/proving-it-works/releases/download/$tag/$name"
+  if command -v sha256sum > /dev/null 2>&1; then
+    got=$(sha256sum "$check/$name" | cut -d' ' -f1)
+  else
+    got=$(shasum -a 256 "$check/$name" | cut -d' ' -f1)
+  fi
+  [[ $got == "$sum" ]] || fail "the published $name has SHA-256 $got, not $sum"
+done < "$bin/checksums.txt"
+rm -rf "$check"
+echo "released $tag: https://github.com/prime-radiant-inc/proving-it-works/releases/tag/$tag"
