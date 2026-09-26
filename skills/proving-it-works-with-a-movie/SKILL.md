@@ -14,6 +14,12 @@ to the first person who watches it.
 **Core principle: you have not made a movie until you have looked at the
 movie.** Not the frames going in. The finished file coming out.
 
+**Film with this skill's `movie` tool, not with browser or screen tools you
+already have** (a Chrome extension, a Playwright MCP server, a GIF
+recorder, computer-use screenshots). Those drive the user's own browser,
+with their tabs and logins, and produce nothing `movie build` can narrate
+or check. Pick the route below.
+
 ## Show each claim through its users' interface
 
 Break the claim into parts and prove each one where its users would meet
@@ -119,6 +125,8 @@ frame, a transition) has to be held longer than a second. Then:
 - "I'll add subtitles later" → later is after someone watched it muted.
 - "Its API is more reliable than clicking" → then the movie proves the API.
   Use the interface the claim is about.
+- "I already have browser tools loaded" → they drive the user's own browser
+  and make no narrated movie. Use `movie browse`.
 
 ## Keep the pipeline
 
