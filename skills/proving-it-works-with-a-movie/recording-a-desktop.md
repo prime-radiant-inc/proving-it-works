@@ -24,6 +24,7 @@ docker exec app-box xdotool search --sync --onlyvisible --name galculator window
 "$m" desk say demo/ "I add two and two, and the display shows four."
 "$m" desk stop demo/ demo/takes/
 "$m" build demo/takes/scenes.yaml calc.mp4
+docker stop app-box; docker container rm app-box; docker rmi movie-desktop
 ```
 
 **Use the app the way a person would.** Look, do one thing, look again:

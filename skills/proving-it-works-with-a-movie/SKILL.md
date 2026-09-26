@@ -103,6 +103,11 @@ frame, a transition) has to be held longer than a second. Then:
    you have no way to hear it, don't go looking for a transcriber: say in
    your report that nobody has listened yet.
 3. Fix, regenerate, re-run. Never patch the report instead of the movie.
+4. **Clean up.** Once the movie is done, `stop` every session, then remove
+   the containers and images you created, by name: `docker stop NAME`,
+   `docker container rm NAME`, `docker rmi IMAGE`. Docker's build cache
+   keeps a rebuild fast. Never prune: `docker system prune`, `image prune`,
+   and `container prune` delete what other people made too.
 
 ## The silent failures
 
