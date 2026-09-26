@@ -336,12 +336,10 @@ func TestLauncherAsksWindowsForItsNativeArchitecture(t *testing.T) {
 	}
 	r := newFakeRelease(t, sha256Hex([]byte("x")), nil, 0)
 	writeText(t, filepath.Join(r.bin, "checksums.txt"), r.want+"  movie-windows-arm64.exe\n")
-	got := r.sh(t, []string{"PROCESSOR_ARCHITECTURE=ARM64", "PROCESSOR_ARCHITEW6432="}, "help")
+	// The runner is 64-bit, so PROCESSOR_ARCHITEW6432 is unset. (Setting it
+	// empty instead makes Git Bash drop PROCESSOR_ARCHITECTURE as well.)
+	got := r.sh(t, []string{"PROCESSOR_ARCHITECTURE=ARM64"}, "help")
 	if _, ok := r.requested.Load("/v" + testVersion + "/movie-windows-arm64.exe"); !ok {
-		for _, env := range [][]string{nil, {"PROCESSOR_ARCHITECTURE=ARM64"}, {"PROCESSOR_ARCHITECTURE=ARM64", "PROCESSOR_ARCHITEW6432="}} {
-			seen := r.run(t, exec.Command("sh", "-c", `env | grep -i '^processor_arch' | tr '\n' ' '`), env)
-			t.Logf("with %v the shell saw: %s", env, seen.stdout)
-		}
 		t.Errorf("did not ask for movie-windows-arm64.exe (exit %d):\n%s", got.code, got.stderr)
 	}
 }
