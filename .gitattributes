@@ -3,4 +3,7 @@ go.mod text eol=lf
 go.sum text eol=lf
 *.ttf binary
 skills/proving-it-works-with-a-movie/bin/movie text eol=lf
+skills/proving-it-works-with-a-movie/bin/movie.ps1 text eol=lf
+skills/proving-it-works-with-a-movie/bin/VERSION text eol=lf
+skills/proving-it-works-with-a-movie/bin/checksums.txt text eol=lf
 skills/proving-it-works-with-a-movie/bin/movie-* binary

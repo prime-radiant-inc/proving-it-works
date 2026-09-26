@@ -90,7 +90,9 @@ type fakeRelease struct {
 func newFakeRelease(t *testing.T, want string, body []byte, delay time.Duration) *fakeRelease {
 	t.Helper()
 	r := &fakeRelease{bin: t.TempDir(), cache: t.TempDir(), want: want}
-	copyFile(t, filepath.Join(repoRoot(t), binDir, "movie"), filepath.Join(r.bin, "movie"), 0o755)
+	for _, launcher := range []string{"movie", "movie.ps1"} {
+		copyFile(t, filepath.Join(repoRoot(t), binDir, launcher), filepath.Join(r.bin, launcher), 0o755)
+	}
 	writeText(t, filepath.Join(r.bin, "VERSION"), testVersion+"\n")
 	writeText(t, filepath.Join(r.bin, "checksums.txt"), want+"  "+hostReleaseName()+"\n")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -312,5 +314,98 @@ func TestLauncherBuildsTheCheckoutFromSource(t *testing.T) {
 	again := r.run(t, exec.Command("sh", launcher, "help"), []string{"MOVIE_FROM_SOURCE=1"})
 	if again.code != 0 || strings.Contains(again.stderr, "building") {
 		t.Errorf("rebuilt unchanged source (exit %d):\n%s", again.code, again.stderr)
+	}
+}
+
+func needPowerShell(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS != "windows" {
+		t.Skip("the PowerShell launcher is for Windows")
+	}
+	if _, err := exec.LookPath("powershell"); err != nil {
+		t.Skip("needs powershell on PATH")
+	}
+}
+
+// powershell runs movie.ps1 the way SKILL.md says to.
+func (r *fakeRelease) powershell(t *testing.T, env []string, args ...string) result {
+	t.Helper()
+	argv := append([]string{"-NoProfile", "-ExecutionPolicy", "Bypass", "-File", filepath.Join(r.bin, "movie.ps1")}, args...)
+	return r.run(t, exec.Command("powershell", argv...), env)
+}
+
+// movie.ps1 downloads, verifies, caches, and runs as the sh launcher does,
+// into the same cache, so Git Bash then finds it there.
+func TestPowerShellLauncherDownloadsIntoTheSharedCache(t *testing.T) {
+	needPowerShell(t)
+	body := hostBinary(t)
+	r := newFakeRelease(t, sha256Hex(body), body, 0)
+	got := r.powershell(t, nil, "a b%c;d")
+	if got.code != 2 || !strings.Contains(got.stderr, `unknown command "a b%c;d"`) {
+		t.Fatalf("argument did not arrive intact (exit %d):\n%s", got.code, got.stderr)
+	}
+	if data, err := os.ReadFile(r.installed()); err != nil || sha256Hex(data) != r.want {
+		t.Fatalf("not cached at %s: %v", r.installed(), err)
+	}
+	help := r.powershell(t, nil, "help")
+	if help.code != 0 || !strings.Contains(help.stdout, "Exit codes:") {
+		t.Errorf("help: exit %d\n%s%s", help.code, help.stdout, help.stderr)
+	}
+	if _, err := exec.LookPath("sh"); err == nil {
+		if got := r.sh(t, nil, "help"); got.code != 0 {
+			t.Errorf("Git Bash: exit %d\n%s", got.code, got.stderr)
+		}
+	}
+	if n := r.downloads.Load(); n != 1 {
+		t.Errorf("%d downloads, want 1: later runs must use the shared cache", n)
+	}
+}
+
+func TestPowerShellLauncherRefusesTheWrongChecksum(t *testing.T) {
+	needPowerShell(t)
+	body := hostBinary(t)
+	wrong := sha256Hex([]byte("not the release"))
+	r := newFakeRelease(t, wrong, body, 0)
+	got := r.powershell(t, nil, "help")
+	if got.code != 2 || !strings.Contains(got.stderr, sha256Hex(body)) || !strings.Contains(got.stderr, wrong) {
+		t.Fatalf("want exit 2 naming both hashes, got %d:\n%s", got.code, got.stderr)
+	}
+	if left := filesUnder(t, r.cache); len(left) != 0 {
+		t.Errorf("left behind: %v", left)
+	}
+}
+
+func TestPowerShellLauncherSaysWhatToFetchWhenTheDownloadFails(t *testing.T) {
+	needPowerShell(t)
+	want := sha256Hex(hostBinary(t))
+	r := newFakeRelease(t, want, nil, 0)
+	got := r.powershell(t, nil, "help")
+	url := r.url + "/v" + testVersion + "/" + hostReleaseName()
+	if got.code != 2 || !strings.Contains(got.stderr, "could not download "+url) || !strings.Contains(got.stderr, "SHA-256 must be "+want) {
+		t.Fatalf("exit %d:\n%s", got.code, got.stderr)
+	}
+}
+
+func TestPowerShellLauncherFirstRunsAtOnceAllSucceed(t *testing.T) {
+	needPowerShell(t)
+	body := hostBinary(t)
+	r := newFakeRelease(t, sha256Hex(body), body, 300*time.Millisecond)
+	results := make([]result, 4)
+	var wg sync.WaitGroup
+	for i := range results {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results[i] = r.powershell(t, nil, "help")
+		}()
+	}
+	wg.Wait()
+	for i, got := range results {
+		if got.code != 0 {
+			t.Errorf("run %d: exit %d\n%s", i, got.code, got.stderr)
+		}
+	}
+	if left := filesUnder(t, r.cache); len(left) != 1 || left[0] != r.installed() {
+		t.Errorf("cache holds %v, want only %s", left, r.installed())
 	}
 }

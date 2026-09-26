@@ -77,9 +77,11 @@ elsewhere that is meant to be silent, pass `--no-expect-audio`; for one
 that is meant to have no subtitles, `--no-expect-subtitles`. (`build`
 sets both expectations for you from the scene file.)
 
-On Windows PowerShell, run `& "$SKILL_DIR/bin/movie-windows-amd64.exe"` with
+On Windows PowerShell, run
+`powershell -ExecutionPolicy Bypass -File "$SKILL_DIR\bin\movie.ps1"` with
 the same arguments. From Git Bash, `bin/movie` works; pass paths in Windows
-form (`cygpath -m`).
+form (`cygpath -m`). The first run downloads movie for this machine (about
+10 MB) and checks it; if it cannot, it says what to fetch and where to put it.
 
 `build` reads a scene file (assembling.md), narrates each narrated scene with
 a cloud voice when `OPENAI_API_KEY` exists and a local voice when it does
