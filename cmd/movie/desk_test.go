@@ -17,8 +17,9 @@ import (
 // runs commands in it. It skips without Docker.
 func deskContainer(t *testing.T) []string {
 	t.Helper()
-	if exec.Command("docker", "info").Run() != nil {
-		t.Skip("needs Docker")
+	// Windows runners' Docker runs Windows containers, which have no X11
+	if out, err := exec.Command("docker", "info", "--format", "{{.OSType}}").Output(); err != nil || strings.TrimSpace(string(out)) != "linux" {
+		t.Skip("needs Docker running Linux containers")
 	}
 	if out, err := exec.Command("docker", "build", "-q", "-t", "movie-desk-test", "--build-arg", "APPS=x11-apps",
 		"../../skills/proving-it-works-with-a-movie/examples/linux-desktop").CombinedOutput(); err != nil {

@@ -382,7 +382,7 @@ func TestBuildNamesItsOutputsRelativeToTheCurrentDirectory(t *testing.T) {
 	still(t, dir, "blue.png", "blue")
 	writeFile(t, dir, "demo.yaml", "size: 320x180\nfps: 10\nscenes:\n  - id: a\n    image: red.png\n    duration: 2\n  - id: b\n    image: blue.png\n    duration: 2\n")
 	r := runMovie(t, dir, "build", "demo.yaml", "demo.mp4")
-	for _, want := range []string{"assembled demo.mp4 (", "sheet      demo-check/contact-sheet.png\n"} {
+	for _, want := range []string{"assembled demo.mp4 (", "sheet      " + filepath.Join("demo-check", "contact-sheet.png") + "\n"} {
 		if !strings.Contains(r.stdout, want) {
 			t.Errorf("missing %q in:\n%s", want, r.stdout)
 		}

@@ -137,6 +137,13 @@ func TestBrowseFilmsAPageIntoFrames(t *testing.T) {
 func TestBrowseStartRefusesAMissingBrowser(t *testing.T) {
 	dir := t.TempDir()
 	r := runBrowse(t, dir, "start", filepath.Join(dir, "s"), "http://example.invalid/", "--browser", "/no/such/chrome")
+	if runtime.GOOS == "windows" {
+		// native Windows is refused before any browser is looked for
+		if r.code != 2 || !strings.Contains(r.stderr, "movie browse needs macOS, Linux, or WSL") {
+			t.Fatalf("code %d\n%s%s", r.code, r.stdout, r.stderr)
+		}
+		return
+	}
 	if r.code != 2 || !strings.Contains(r.stderr, "--browser /no/such/chrome: not an executable") {
 		t.Fatalf("code %d\n%s%s", r.code, r.stdout, r.stderr)
 	}

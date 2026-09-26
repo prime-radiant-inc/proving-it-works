@@ -20,6 +20,19 @@ fail() {
   exit 2
 }
 
+# run_movie runs movie with its arguments untouched. Git Bash rewrites
+# Unix-looking arguments for native programs, so on Windows that is turned
+# off for movie alone (pass it paths in Windows form, cygpath -m); curl and
+# go, which this script runs with Unix paths, need the rewriting.
+run_movie() {
+  if [ "$os" = windows ]; then
+    MSYS_NO_PATHCONV=1
+    MSYS2_ARG_CONV_EXCL='*'
+    export MSYS_NO_PATHCONV MSYS2_ARG_CONV_EXCL
+  fi
+  exec "$@"
+}
+
 # sha256 prints the SHA-256 of a file, or of standard input for -.
 sha256() {
   if command -v sha256sum >/dev/null 2>&1; then
@@ -32,13 +45,7 @@ sha256() {
 case "$(uname -s)" in
   Darwin) os=darwin ;;
   Linux) os=linux ;;
-  MINGW*|MSYS*|CYGWIN*)
-    os=windows
-    # Git Bash rewrites Unix-looking arguments for native programs; stop it.
-    # Pass paths in Windows form (cygpath -m) instead.
-    MSYS_NO_PATHCONV=1
-    MSYS2_ARG_CONV_EXCL='*'
-    export MSYS_NO_PATHCONV MSYS2_ARG_CONV_EXCL ;;
+  MINGW*|MSYS*|CYGWIN*) os=windows ;;
   *) fail "unsupported system $(uname -s)" ;;
 esac
 if [ "$os" = windows ]; then
@@ -82,7 +89,7 @@ if [ "${MOVIE_FROM_SOURCE:-}" = 1 ]; then
     bash "$src/script/build-binaries" "$out" "$os/$arch" >&2 || fail "building $name from source failed"
     printf '%s\n' "$stamp" > "$out/stamp"
   fi
-  exec "$out/$name" "$@"
+  run_movie "$out/$name" "$@"
 fi
 
 [ -f "$here/VERSION" ] || fail "$here has no VERSION, so there is no release to download; MOVIE_FROM_SOURCE=1 builds this checkout instead"
@@ -130,4 +137,4 @@ if [ ! -f "$bin" ]; then
     fi
   done
 fi
-exec "$bin" "$@"
+run_movie "$bin" "$@"
