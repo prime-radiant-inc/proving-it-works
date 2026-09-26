@@ -9,17 +9,21 @@ It needs Linux with X11: a desktop session, or Xvfb in a container. It uses
 
 ```bash
 m="$SKILL_DIR/bin/movie"
-# the app runs on display :99 in a container; start it yourself
-docker exec -d -e DISPLAY=:99 app-box blender
-"$m" desk start demo/ --display :99 --title "Blender" -- docker exec app-box
+# a Linux desktop in a container, with the app installed (see "In a container")
+docker build -t movie-desktop --build-arg APPS="galculator" "$SKILL_DIR/examples/linux-desktop"
+docker run -d --init --name app-box movie-desktop
+docker exec -d app-box galculator
+docker exec app-box xdotool search --sync --onlyvisible --name galculator windowsize %@ 640 700
+"$m" desk start demo/ --display :99 --window galculator --title "A calculator" -- docker exec app-box
 "$m" desk shot demo/                       # look: prints demo/shot.png and the pointer
-"$m" desk click demo/ 660 420              # select the cube
-"$m" desk key demo/ x
-"$m" desk click demo/ 633 420              # Delete, in the confirmation
+"$m" desk click demo/ 193 530              # 2
+"$m" desk click demo/ 447 641              # +
+"$m" desk click demo/ 193 530              # 2
+"$m" desk click demo/ 573 585              # =
 "$m" desk shot demo/                       # look at the result, and read it
-"$m" desk say demo/ "I select the cube and delete it."
+"$m" desk say demo/ "I add two and two, and the display shows four."
 "$m" desk stop demo/ demo/takes/
-"$m" build demo/takes/scenes.yaml blender.mp4
+"$m" build demo/takes/scenes.yaml calc.mp4
 ```
 
 **Use the app the way a person would.** Look, do one thing, look again:
@@ -36,6 +40,12 @@ software-rendered preview, a dialog, or a file load can land seconds after
 the click, after the verb has already settled. A `wait --quiet 3` gives slow
 apps room. A result that shows up late also means the click worked; a
 second click on a toggle can undo it.
+
+**Film the app's window, not the display.** An app with one main window
+is small in a corner of a whole display, so start with `--window NAME`.
+If the window opens small, size it before `start`, as above: `--sync`
+waits for the window to appear. To start over, `stop` the session and `start`
+a new one in a fresh directory; the old one can stay where it is.
 
 **Coordinates are pixels of what is filmed**: read a point off the shot
 and click it. Without `--window`, the whole display is filmed. With
@@ -96,17 +106,17 @@ new one.
 
 ## In a container
 
-```bash
-docker run -d --init --name app-box IMAGE sleep infinity
-docker exec -d app-box Xvfb :99 -screen 0 1600x900x24 +extension GLX
-"$m" desk start demo/ --display :99 -- docker exec app-box
-```
+`examples/linux-desktop/Dockerfile` in this skill is a Debian desktop with
+an Xvfb display on :99 and the xdotool and ffmpeg desk needs. Build it with
+your app's Debian packages in `APPS`, as above, rather than writing your
+own: the tools stay in a cached layer, so the next app builds in seconds.
+The container starts the display itself, at 1280x720; for another size,
+end the `docker run` line with `Xvfb :99 -screen 0 1600x900x24 +extension GLX`.
 
 With `-- docker exec CONTAINER`, xdotool and ffmpeg run in the container
 and the recording stays on the host. `--init` matters: without it, exited
 processes stay behind as zombies. Apps drawing with OpenGL, such as
-Blender, get it from Mesa (`libgl1-mesa-dri`); `+extension GLX` gives Xvfb
-the GLX extension they need.
+Blender, get it from Mesa: add `libgl1-mesa-dri` to `APPS`.
 
 A first run may put up a splash screen or a first-run dialog. Dismiss it
 before you narrate, or with `film off` around it.

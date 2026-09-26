@@ -12,23 +12,24 @@ import (
 	"time"
 )
 
-// deskContainer starts a container from internal/desk/testdata with Xvfb on
-// :99 and xcalc on it, removed when t ends, and returns the wrapper that
+// deskContainer starts a container from the skill's linux-desktop example,
+// with the X11 demo apps added, an 800x600 display on :99, and xcalc on it, removed when t ends, and returns the wrapper that
 // runs commands in it. It skips without Docker.
 func deskContainer(t *testing.T) []string {
 	t.Helper()
 	if exec.Command("docker", "info").Run() != nil {
 		t.Skip("needs Docker")
 	}
-	if out, err := exec.Command("docker", "build", "-q", "-t", "movie-desk-test", "../../internal/desk/testdata").CombinedOutput(); err != nil {
+	if out, err := exec.Command("docker", "build", "-q", "-t", "movie-desk-test", "--build-arg", "APPS=x11-apps",
+		"../../skills/proving-it-works-with-a-movie/examples/linux-desktop").CombinedOutput(); err != nil {
 		t.Fatalf("building the test image: %v\n%s", err, out)
 	}
 	name := fmt.Sprintf("movie-desk-test-%d", rand.IntN(1e9))
-	if out, err := exec.Command("docker", "run", "-d", "--init", "--name", name, "movie-desk-test").CombinedOutput(); err != nil {
+	if out, err := exec.Command("docker", "run", "-d", "--init", "--name", name, "movie-desk-test",
+		"Xvfb", ":99", "-screen", "0", "800x600x24").CombinedOutput(); err != nil {
 		t.Fatalf("starting the container: %v\n%s", err, out)
 	}
 	t.Cleanup(func() { exec.Command("docker", "rm", "-f", name).Run() })
-	exec.Command("docker", "exec", "-d", name, "Xvfb", ":99", "-screen", "0", "800x600x24").Run()
 	for deadline := time.Now().Add(10 * time.Second); exec.Command("docker", "exec", "-e", "DISPLAY=:99", name, "xdotool", "getdisplaygeometry").Run() != nil; time.Sleep(100 * time.Millisecond) {
 		if time.Now().After(deadline) {
 			t.Fatal("Xvfb never came up")

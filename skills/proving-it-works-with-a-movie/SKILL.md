@@ -99,7 +99,9 @@ frame, a transition) has to be held longer than a second. Then:
    text means your viewport is wrong.
 2. **If narrated: listen to it.** No tool here can hear a mispronounced name
    or a skipped sentence. For `openai-chat`, the model's own transcript is
-   gated, which proves what it says it said, not what is in the audio.
+   gated, which proves what it says it said, not what is in the audio. If
+   you have no way to hear it, don't go looking for a transcriber: say in
+   your report that nobody has listened yet.
 3. Fix, regenerate, re-run. Never patch the report instead of the movie.
 
 ## The silent failures
