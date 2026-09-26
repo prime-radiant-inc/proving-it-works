@@ -52,7 +52,9 @@ recording against a copy of your data rather than the real thing.
 
 ### The tool
 
-One binary, `bin/movie`, prebuilt for macOS, Linux, and Windows. It needs
+One binary, run through `bin/movie`, which on first use downloads the build
+for your machine (macOS, Linux, or Windows, on x86-64 or ARM64) from this
+repo's GitHub release and checks it against `bin/checksums.txt`. It needs
 ffmpeg; `movie term` also needs tmux, `movie browse` needs Chrome, Chromium,
 or Edge, `movie desk` needs xdotool and ffmpeg where the display is, and the
 keyless local voice needs

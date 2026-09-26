@@ -27,10 +27,13 @@ mkdir -p "$work"
 
 case $platform in
   linux)
+    arch=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+    linuxbin=$(mktemp -d)
+    bash "$here/../../script/build-binaries" "$linuxbin" "linux/$arch" > /dev/null
     docker rm -f tour > /dev/null 2>&1 || true
     docker run -d --name tour --shm-size 1g \
       -v "$work:/work" \
-      -v "$bin/movie-linux-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/'):/usr/local/bin/movie:ro" \
+      -v "$linuxbin/movie-linux-$arch:/usr/local/bin/movie:ro" \
       -v "$here/app/todo:/usr/local/bin/todo:ro" \
       -v "$here/app/index.html:/srv/index.html:ro" \
       movie-tour > /dev/null

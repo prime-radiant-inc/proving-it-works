@@ -16,3 +16,6 @@ __pycache__/
 
 # movie build scratch
 *.build/
+
+# movie's binaries ship as GitHub release assets, never in the repo
+skills/proving-it-works-with-a-movie/bin/movie-*
