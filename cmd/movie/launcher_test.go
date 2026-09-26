@@ -338,9 +338,11 @@ func TestLauncherAsksWindowsForItsNativeArchitecture(t *testing.T) {
 	writeText(t, filepath.Join(r.bin, "checksums.txt"), r.want+"  movie-windows-arm64.exe\n")
 	got := r.sh(t, []string{"PROCESSOR_ARCHITECTURE=ARM64", "PROCESSOR_ARCHITEW6432="}, "help")
 	if _, ok := r.requested.Load("/v" + testVersion + "/movie-windows-arm64.exe"); !ok {
-		seen := r.run(t, exec.Command("sh", "-c", `echo "PROCESSOR_ARCHITECTURE=$PROCESSOR_ARCHITECTURE PROCESSOR_ARCHITEW6432=$PROCESSOR_ARCHITEW6432"`),
-			[]string{"PROCESSOR_ARCHITECTURE=ARM64", "PROCESSOR_ARCHITEW6432="})
-		t.Errorf("did not ask for movie-windows-arm64.exe (exit %d):\n%s\nthe shell saw: %s", got.code, got.stderr, seen.stdout)
+		for _, env := range [][]string{nil, {"PROCESSOR_ARCHITECTURE=ARM64"}, {"PROCESSOR_ARCHITECTURE=ARM64", "PROCESSOR_ARCHITEW6432="}} {
+			seen := r.run(t, exec.Command("sh", "-c", `env | grep -i '^processor_arch' | tr '\n' ' '`), env)
+			t.Logf("with %v the shell saw: %s", env, seen.stdout)
+		}
+		t.Errorf("did not ask for movie-windows-arm64.exe (exit %d):\n%s", got.code, got.stderr)
 	}
 }
 

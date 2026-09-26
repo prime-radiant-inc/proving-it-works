@@ -129,8 +129,17 @@ if [ ! -f "$bin" ]; then
     fail "$url has SHA-256 $got, but checksums.txt says $want; not running it"
   fi
   chmod +x "$tmp"
-  # another first run may have installed it meanwhile; either copy is verified
-  mv -f "$tmp" "$bin" 2>/dev/null || rm -f "$tmp"
+  # Another first run may have installed it meanwhile, and either copy is
+  # verified. On Windows, renaming onto a running .exe fails, and another
+  # run's rename can take a moment to show, so wait for it briefly.
+  if [ -f "$bin" ] || ! mv -f "$tmp" "$bin" 2>/dev/null; then
+    rm -f "$tmp"
+    tries=0
+    while [ ! -f "$bin" ] && [ "$tries" -lt 50 ]; do
+      sleep 0.1
+      tries=$((tries + 1))
+    done
+  fi
   [ -f "$bin" ] || fail "could not install $bin"
   # older releases' binaries are no longer needed; one still in use (a
   # running .exe on Windows) is left for a later install to remove
