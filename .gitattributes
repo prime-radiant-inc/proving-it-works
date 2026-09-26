@@ -1,3 +1,6 @@
+# Text is LF everywhere, Windows checkouts included: movie embeds text files
+# (overlay.js), so CRLF would change the binaries the release check compares.
+* text=auto eol=lf
 *.go text eol=lf
 go.mod text eol=lf
 go.sum text eol=lf
