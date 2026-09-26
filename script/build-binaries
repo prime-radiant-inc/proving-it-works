@@ -1,14 +1,31 @@
 #!/usr/bin/env bash
-# Build the five release binaries of movie, reproducibly.
+# Build movie's release binaries, reproducibly.
 #
-# When: before merging to main (commit the result), and from the freshness
-# test, which builds into a temporary OUTDIR and compares bytes.
+# When: script/release builds all six to publish them; the release check
+# (MOVIE_RELEASE_CHECK=1) builds them to compare with bin/checksums.txt;
+# MOVIE_FROM_SOURCE=1 and examples/tour build one. The binaries ship as
+# GitHub release assets: never commit them.
 #
-# Usage: script/build-binaries [OUTDIR]
-#   OUTDIR defaults to skills/proving-it-works-with-a-movie/bin.
+# Usage: script/build-binaries OUTDIR [OS/ARCH...]
+#   With no OS/ARCH, builds every release target.
 set -euo pipefail
+all="darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64 windows/arm64"
+if [[ $# -lt 1 ]]; then
+  echo "usage: script/build-binaries OUTDIR [OS/ARCH...]  (targets: $all)" >&2
+  exit 2
+fi
 root=$(cd "$(dirname "$0")/.." && pwd)
-out=${1:-$root/skills/proving-it-works-with-a-movie/bin}
+out=$1
+shift
+if [[ $# -eq 0 ]]; then
+  set -- $all
+fi
+for target in "$@"; do
+  case " $all " in
+    *" $target "*) ;;
+    *) echo "build-binaries: unknown target $target; one of: $all" >&2; exit 2 ;;
+  esac
+done
 
 # The toolchain line wins; go mod tidy drops it when it equals the go line,
 # so fall back to the go line, which must carry a full patch version.
@@ -22,7 +39,7 @@ if [[ ! $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
 fi
 
 mkdir -p "$out"
-for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64; do
+for target in "$@"; do
   goos=${target%/*}
   goarch=${target#*/}
   name=movie-$goos-$goarch
