@@ -260,11 +260,13 @@ func TestLauncherRunsEvenWhenAnOldVersionCannotBeRemoved(t *testing.T) {
 }
 
 // Arguments reach movie exactly: embedded quotes, and empty arguments.
+// (Git Bash turns a doubled backslash into one when it starts a Windows
+// program, which no script can prevent; movie.ps1 keeps it.)
 func TestLauncherPassesQuotesAndEmptyArgumentsThrough(t *testing.T) {
 	needSh(t)
 	body := hostBinary(t)
 	r := newFakeRelease(t, sha256Hex(body), body, 0)
-	for _, arg := range []string{`say "hi" \\ \"`, ""} {
+	for _, arg := range []string{`say "hi" \"`, ""} {
 		got := r.sh(t, nil, arg)
 		if want := fmt.Sprintf("unknown command %q", arg); got.code != 2 || !strings.Contains(got.stderr, want) {
 			t.Errorf("want %s, got exit %d:\n%s", want, got.code, got.stderr)
@@ -336,7 +338,9 @@ func TestLauncherAsksWindowsForItsNativeArchitecture(t *testing.T) {
 	writeText(t, filepath.Join(r.bin, "checksums.txt"), r.want+"  movie-windows-arm64.exe\n")
 	got := r.sh(t, []string{"PROCESSOR_ARCHITECTURE=ARM64", "PROCESSOR_ARCHITEW6432="}, "help")
 	if _, ok := r.requested.Load("/v" + testVersion + "/movie-windows-arm64.exe"); !ok {
-		t.Errorf("did not ask for movie-windows-arm64.exe (exit %d):\n%s", got.code, got.stderr)
+		seen := r.run(t, exec.Command("sh", "-c", `echo "PROCESSOR_ARCHITECTURE=$PROCESSOR_ARCHITECTURE PROCESSOR_ARCHITEW6432=$PROCESSOR_ARCHITEW6432"`),
+			[]string{"PROCESSOR_ARCHITECTURE=ARM64", "PROCESSOR_ARCHITEW6432="})
+		t.Errorf("did not ask for movie-windows-arm64.exe (exit %d):\n%s\nthe shell saw: %s", got.code, got.stderr, seen.stdout)
 	}
 }
 
