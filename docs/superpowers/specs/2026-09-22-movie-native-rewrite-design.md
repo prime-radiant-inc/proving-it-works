@@ -422,14 +422,21 @@ is filmed, so a point read off a `shot` is the point to click; with
 `--window` they are relative to the window. The app is the agent's to
 start (on the display, in the container); `desk` films and drives it.
 
-**Hands** are one `xdotool` process per action, its commands chained: a
-glide is 15 moves 25 ms apart, and a click hovers 200 ms, then holds the
+**Hands** are one chained `xdotool` command per action, after a query for
+where the pointer is: a glide is 15 moves 25 ms apart, a drag presses,
+glides, and releases in the same chain so the button cannot stay held, and a click hovers 200 ms, then holds the
 button 120 ms, as a person's does; some toolkits drop a click that arrives
 with the pointer or is released at once. **The camera** is `ffmpeg -f x11grab
 -draw_mouse 1` at 10 fps writing PNGs to stdout (`image2pipe`,
 `-flush_packets 1`); the recorder splits the stream at each PNG's `IEND`,
 stamps each picture when it arrives, and puts it on a `film.Reel`, which
-drops repeats. Both run through the wrapper, so with `-- docker exec
+drops repeats. ffmpeg runs under `sh -c 'echo $$; exec ...'`, so the
+recorder knows its process id on the display's side and stop kills it
+there and waits for it to go: ending a local `docker exec` does not end
+the process in the container. `start` returns only once a real picture has
+arrived, and every action first checks that the recorder is still filming;
+either reports ffmpeg's own reason. The filmed area is trimmed to even
+width and height for the encoder. Both run through the wrapper, so with `-- docker exec
 CONTAINER` the display, app, xdotool, and ffmpeg live in the container and
 the recording on the host. **Settling** reads the recorder's own log: an
 action is over once no new picture has arrived for 400 ms since it ended,

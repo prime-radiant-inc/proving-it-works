@@ -29,9 +29,19 @@ func deskContainer(t *testing.T) []string {
 	}
 	t.Cleanup(func() { exec.Command("docker", "rm", "-f", name).Run() })
 	exec.Command("docker", "exec", "-d", name, "Xvfb", ":99", "-screen", "0", "800x600x24").Run()
-	time.Sleep(time.Second)
+	for deadline := time.Now().Add(10 * time.Second); exec.Command("docker", "exec", "-e", "DISPLAY=:99", name, "xdotool", "getdisplaygeometry").Run() != nil; time.Sleep(100 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("Xvfb never came up")
+		}
+	}
 	exec.Command("docker", "exec", "-d", "-e", "DISPLAY=:99", name, "xcalc").Run()
-	return []string{"docker", "exec", name}
+	return []string{"docker", "exec", "-e", "DISPLAY=:99", name}
+}
+
+// inBox runs a command in the test container.
+func inBox(wrapper []string, args ...string) error {
+	argv := append(append([]string{}, wrapper[1:]...), args...)
+	return exec.Command(wrapper[0], argv...).Run()
 }
 
 func startDesk(t *testing.T, dir string, wrapper []string, args ...string) string {
@@ -66,6 +76,10 @@ func mustDesk(t *testing.T, dir string, args ...string) result {
 func TestDeskDrivesAndFilmsADesktopApp(t *testing.T) {
 	wrapper := deskContainer(t)
 	dir := t.TempDir()
+	// away from 0,0, so filmed coordinates and screen coordinates differ
+	if err := inBox(wrapper, "xdotool", "search", "--sync", "--onlyvisible", "--name", "Calculator", "windowmove", "100", "50"); err != nil {
+		t.Fatal(err)
+	}
 	session := startDesk(t, dir, wrapper, "--window", "Calculator", "--title", "xcalc")
 
 	r := mustDesk(t, dir, "shot", session)
@@ -84,11 +98,15 @@ func TestDeskDrivesAndFilmsADesktopApp(t *testing.T) {
 	if !strings.Contains(r.stdout, "clicked at 30,10") {
 		t.Errorf("click printed %q", r.stdout)
 	}
+	mustDesk(t, dir, "drag", session, "30", "10", "60", "12")
 	mustDesk(t, dir, "key", session, "Escape")
 	mustDesk(t, dir, "wait", session, "--quiet", "0.5", "--timeout", "5", "--say", "Then clear it.")
 
 	takes := filepath.Join(dir, "takes")
 	r = mustDesk(t, dir, "stop", session, takes)
+	if inBox(wrapper, "pgrep", "-f", "x11grab") == nil {
+		t.Error("stop left the capture running in the container")
+	}
 	if !strings.Contains(r.stdout, "2 takes, 2 narrated") {
 		t.Fatalf("stop printed:\n%s", r.stdout)
 	}
@@ -127,13 +145,62 @@ func TestDeskRefusesWhatItCannotDo(t *testing.T) {
 	if r.code != 2 || !strings.Contains(r.stderr, "outside the filmed 800x600") {
 		t.Errorf("a click off the display: code %d\n%s", r.code, r.stderr)
 	}
-	r = runMovie(t, dir, "desk", "wait", session, "--quiet", "3", "--timeout", "1")
-	if r.code != 1 || !strings.Contains(r.stderr, "did not hold still") {
-		t.Errorf("a wait that times out: code %d\n%s", r.code, r.stderr)
+	r = runMovie(t, dir, "desk", "cut", session, "--say", "nothing")
+	if r.code != 2 {
+		t.Errorf("--say on a verb that is not an action: code %d", r.code)
 	}
 	mustDesk(t, dir, "stop", session, filepath.Join(dir, "takes"))
 	r = runMovie(t, dir, "desk", "stop", session, filepath.Join(dir, "again"))
 	if r.code != 2 || !strings.Contains(r.stderr, "already stopped") {
 		t.Errorf("a second stop: code %d\n%s", r.code, r.stderr)
 	}
+}
+
+// A capture that cannot run, or stops running, is reported, never filmed past.
+func TestDeskNoticesADeadCamera(t *testing.T) {
+	wrapper := deskContainer(t)
+	dir := t.TempDir()
+	// a window hanging off the screen cannot be captured
+	inBox(wrapper, "xdotool", "search", "--sync", "--onlyvisible", "--name", "Calculator", "windowmove", "700", "500")
+	gone := filepath.Join(dir, "off")
+	r := runMovie(t, dir, append([]string{"desk", "start", gone, "--display", ":99", "--window", "Calculator", "--"}, wrapper...)...)
+	if r.code != 2 || !strings.Contains(r.stderr, "the capture failed") || !strings.Contains(r.stderr, "outside the screen") {
+		t.Errorf("an uncapturable window: code %d\n%s%s", r.code, r.stdout, r.stderr)
+	}
+	if entries, _ := os.ReadDir(gone); len(entries) > 0 {
+		t.Errorf("a failed start left %d files behind", len(entries))
+	}
+	session := startDesk(t, dir, wrapper)
+	inBox(wrapper, "pkill", "-f", "x11grab")
+	time.Sleep(time.Second)
+	r = runMovie(t, dir, "desk", "click", session, "10", "10", "--say", "Filmed by nobody.")
+	if r.code != 2 || !strings.Contains(r.stderr, "the recorder has stopped") {
+		t.Errorf("an action after the capture died: code %d\n%s%s", r.code, r.stdout, r.stderr)
+	}
+}
+
+// Filming stops at even sizes, which the encoder needs, and holds still
+// only when nothing in view moves.
+func TestDeskFilmsEvenSizesAndSeesMotion(t *testing.T) {
+	wrapper := deskContainer(t)
+	dir := t.TempDir()
+	inBox(wrapper, "sh", "-c", "xeyes -geometry 151x101+300+300 & xclock -update 1 -geometry 120x120+500+50 &")
+	session := startDesk(t, dir, wrapper, "--window", "xeyes")
+	r := mustDesk(t, dir, "shot", session)
+	if !strings.Contains(r.stdout, "(150x100)") {
+		t.Errorf("a 151x101 window should film at 150x100: %s", r.stdout)
+	}
+	// the whole display holds a ticking clock, so it never holds still
+	whole := filepath.Join(dir, "whole")
+	r = runMovie(t, dir, append([]string{"desk", "start", whole, "--display", ":99", "--"}, wrapper...)...)
+	if r.code != 0 {
+		t.Fatalf("start: %d %s", r.code, r.stderr)
+	}
+	r = runMovie(t, dir, "desk", "wait", whole, "--quiet", "1.5", "--timeout", "4")
+	if r.code != 1 || !strings.Contains(r.stderr, "did not hold still") {
+		t.Errorf("a wait over a ticking clock: code %d\n%s", r.code, r.stderr)
+	}
+	mustDesk(t, dir, "wait", session, "--quiet", "1.5", "--timeout", "6") // xeyes alone holds still
+	mustDesk(t, dir, "stop", whole, filepath.Join(dir, "whole-takes"))
+	mustDesk(t, dir, "stop", session, filepath.Join(dir, "takes"))
 }

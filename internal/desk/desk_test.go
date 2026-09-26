@@ -88,3 +88,23 @@ func TestCoordinatesAreRelativeToWhatIsFilmed(t *testing.T) {
 		}
 	}
 }
+
+func TestTheFilmedAreaIsEvenSized(t *testing.T) {
+	if r := even(region{X: 3, Y: 4, W: 151, H: 101}); r != (region{X: 3, Y: 4, W: 150, H: 100}) {
+		t.Fatalf("got %+v", r)
+	}
+	if r := even(region{W: 800, H: 600}); r != (region{W: 800, H: 600}) {
+		t.Fatalf("got %+v", r)
+	}
+}
+
+func TestADragIsOneChainSoTheButtonIsAlwaysReleased(t *testing.T) {
+	cmd := strings.Join(dragChain(image.Pt(0, 0), image.Pt(10, 10), image.Pt(40, 10)), " ")
+	down, up := strings.Index(cmd, "mousedown 1"), strings.Index(cmd, "mouseup 1")
+	if down < 0 || up < down || !strings.HasSuffix(cmd, "mouseup 1") {
+		t.Fatalf("got %q", cmd)
+	}
+	if !strings.Contains(cmd[down:up], "mousemove 40 10") {
+		t.Fatalf("the glide to the drop point must happen with the button down: %q", cmd)
+	}
+}

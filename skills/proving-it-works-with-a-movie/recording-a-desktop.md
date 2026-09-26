@@ -34,9 +34,21 @@ apps room. A result that shows up late also means the click worked; a
 second click on a toggle can undo it.
 
 **Coordinates are pixels of what is filmed**: read a point off the shot
-and click it. With `--window NAME`, only that window's area is filmed and
-the coordinates are relative to it; without it, the whole display is
-filmed.
+and click it. Without `--window`, the whole display is filmed. With
+`--window NAME`, only the area of the first visible window whose title
+contains NAME (a regular expression) is filmed, and coordinates are
+relative to it; `start` prints which window it found. That area is fixed
+when filming starts: if the window moves or resizes, or a menu or dialog
+opens outside it, the movie will not show it and you cannot click it.
+Film the whole display when the app opens windows of its own.
+
+**Keys go to the window under the pointer** on a display with no window
+manager, as Xvfb has. Move the pointer onto the app before `key` or `type`.
+
+**Anything that keeps moving keeps the picture from holding still**: a
+clock, a spinner, a blinking caret. Then the time you spend thinking is not
+cut, and `wait` times out. Film just the app with `--window` to leave a
+panel clock out.
 
 **`--say` is how you narrate**, as in `movie browse`. It works on every
 action and ends a beat. Put it on the action whose result proves the
@@ -57,13 +69,16 @@ spends working is kept.
 | `click SESSION X Y [--right] [--double]` | glide there, pause, and click | 0 |
 | `drag SESSION X1 Y1 X2 Y2` | press, glide, release | 0 |
 | `key SESSION KEY...` | press keys by xdotool's names: `Return`, `Escape`, `ctrl+s`, `shift+a`, `KP_1` | 0 |
-| `type SESSION 'text'` | type at human pace into whatever has the focus | 0 |
+| `type SESSION 'text'` | type at human pace into whatever has the focus (`type SESSION -- '-5'` for text that starts with a dash) | 0 |
 | `wait SESSION [--quiet 1] [--timeout 60]` | wait until the picture holds still | 0, 1 timed out |
 | `cut SESSION`, `film SESSION on\|off` | as in `browse` | 0 |
 | `stop SESSION OUTDIR`, `render SESSION OUTDIR` | render the takes and write `OUTDIR/scenes.yaml` | 0 |
 
 Every action takes `--say`. After each one the verb waits for the picture
-to hold still for 0.4 seconds, for at most 5 seconds.
+to hold still for 0.4 seconds, for at most 5 seconds. Any verb exits 2 when
+xdotool or ffmpeg fails, and every action refuses to run once the recorder
+has stopped filming, with ffmpeg's reason: stop that session and start a
+new one.
 
 ## In a container
 

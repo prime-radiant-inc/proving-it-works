@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -38,4 +39,15 @@ func Exists(path string) bool {
 func HasContent(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.Size() > 0
+}
+
+// FirstLine is the first non-empty line of text, or fallback when there is
+// none: the reason a tool gives on stderr.
+func FirstLine(text, fallback string) string {
+	for _, line := range strings.Split(text, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			return line
+		}
+	}
+	return fallback
 }

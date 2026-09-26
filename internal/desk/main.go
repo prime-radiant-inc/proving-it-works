@@ -81,7 +81,10 @@ func dispatch(verb string, args []string, stdout, stderr io.Writer) (int, error)
 	fs := flag.NewFlagSet("movie desk "+verb, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() { fmt.Fprint(stderr, usage) }
-	say := fs.String("say", "", "narration for the beat this action ends")
+	var say *string
+	if slices.Contains([]string{"move", "click", "drag", "key", "type", "wait"}, verb) {
+		say = fs.String("say", "", "narration for the beat this action ends")
+	}
 	switch verb {
 	case "start":
 		var wrapper []string

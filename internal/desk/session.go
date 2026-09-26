@@ -24,6 +24,13 @@ import (
 // region is the part of the display being filmed, in screen pixels.
 type region struct{ X, Y, W, H int }
 
+// even trims a region to even width and height, which the encoder needs.
+func even(r region) region {
+	r.W &^= 1
+	r.H &^= 1
+	return r
+}
+
 // screen turns a point in what is filmed, as read off a shot, into a point
 // on the screen.
 func (r region) screen(x, y int) (image.Point, error) {
@@ -132,6 +139,15 @@ func glide(from, to image.Point) []string {
 		cmd = append(cmd, "mousemove", strconv.Itoa(p.X), strconv.Itoa(p.Y), "sleep", "0.025")
 	}
 	return cmd
+}
+
+// dragChain is the xdotool commands for a drag as one chain, so a failure
+// part way cannot leave the button held: glide from the pointer to from,
+// press, glide to to, release.
+func dragChain(pointer, from, to image.Point) []string {
+	cmd := append(glide(pointer, from), "sleep", "0.2", "mousedown", "1")
+	cmd = append(cmd, glide(from, to)...)
+	return append(cmd, "sleep", "0.12", "mouseup", "1")
 }
 
 // press is the xdotool commands for a click that arrives after the pointer

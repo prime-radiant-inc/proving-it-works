@@ -54,7 +54,8 @@ func Start(dir string, o StartOptions, stdout io.Writer) (err error) {
 			return fmt.Errorf("%s does not run on the display's side (%v): install it there", check[0], err)
 		}
 	}
-	if s.Region, err = s.find(o.Window); err != nil {
+	name := ""
+	if s.Region, name, err = s.find(o.Window); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(abs, 0o755); err != nil {
@@ -82,44 +83,67 @@ func Start(dir string, o StartOptions, stdout io.Writer) (err error) {
 	}
 	spawned = true
 	if !cli.WaitFor(15*time.Second, func() bool { return cli.HasContent(filepath.Join(abs, "frames.jsonl")) }) {
-		return fmt.Errorf("the recorder did not start; see %s", filepath.Join(abs, "recorder.log"))
+		return errors.New("the recorder did not start within 15 s")
+	}
+	if err := s.filming(); err != nil {
+		return err
 	}
 	if err := s.set().Roll(); err != nil {
 		return err
 	}
 	fmt.Fprintf(stdout, "{\"ready\":true,\"session\":%q}\nfilming %dx%d of display %s", abs, s.Region.W, s.Region.H, s.Display)
 	if o.Window != "" {
-		fmt.Fprintf(stdout, ": the window %q at %d,%d", o.Window, s.Region.X, s.Region.Y)
+		fmt.Fprintf(stdout, ": the window %q at %d,%d", name, s.Region.X, s.Region.Y)
 	}
 	fmt.Fprintln(stdout, "; coordinates are pixels of what is filmed, as in a shot")
 	return nil
 }
 
-// find returns the region to film: the named window, or the whole display.
-func (s *Session) find(window string) (region, error) {
+// find returns the region to film, trimmed to an even size: the first
+// visible window whose title contains window (xdotool matches a regular
+// expression), with its full title, or the whole display.
+func (s *Session) find(window string) (region, string, error) {
 	if window == "" {
 		out, err := s.xdotool("getdisplaygeometry")
 		if err != nil {
-			return region{}, err
+			return region{}, "", err
 		}
 		var r region
 		if _, err := fmt.Sscan(out, &r.W, &r.H); err != nil {
-			return region{}, fmt.Errorf("unreadable display size %q", out)
+			return region{}, "", fmt.Errorf("unreadable display size %q", out)
 		}
-		return r, nil
+		return even(r), "", nil
 	}
 	// the app may still be opening, so look for a few seconds
 	var out string
 	found := cli.WaitFor(10*time.Second, func() bool {
 		var err error
-		out, err = s.xdotool("search", "--onlyvisible", "--name", window, "getwindowgeometry", "--shell")
+		out, err = s.xdotool("search", "--onlyvisible", "--name", window, "getwindowname", "getwindowgeometry", "--shell")
 		return err == nil && strings.Contains(out, "WIDTH=")
 	})
 	if !found {
-		return region{}, fmt.Errorf("no visible window named %q on display %s", window, s.Display)
+		return region{}, "", fmt.Errorf("no visible window named %q on display %s", window, s.Display)
 	}
 	v := shellValues(out)
-	return region{X: v["X"], Y: v["Y"], W: v["WIDTH"], H: v["HEIGHT"]}, nil
+	title, _, _ := strings.Cut(out, "\n")
+	return even(region{X: v["X"], Y: v["Y"], W: v["WIDTH"], H: v["HEIGHT"]}), title, nil
+}
+
+// filming reports why the recorder is not filming, if it is not: its log
+// ends with an end, which carries ffmpeg's reason.
+func (s *Session) filming() error {
+	frames, err := jsonl.Read[film.Frame](filepath.Join(s.Dir, "frames.jsonl"))
+	if err != nil {
+		return err
+	}
+	if n := len(frames); n > 0 && frames[n-1].End {
+		reason := frames[n-1].Reason
+		if n == 1 {
+			return errors.New(reason)
+		}
+		return fmt.Errorf("the recorder has stopped (%s): stop this session and start a new one", reason)
+	}
+	return nil
 }
 
 // Shot saves what is filmed now as a PNG at path (SESSION/shot.png when
@@ -130,9 +154,12 @@ func Shot(s *Session, path string, stdout io.Writer) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	picture, err := s.command(ctx, s.capture(ctx, 1)...).Output()
+	cmd := s.command(ctx, s.capture(ctx, 1)...)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	picture, err := cmd.Output()
 	if err != nil {
-		return fmt.Errorf("capturing the screen: %w", err)
+		return fmt.Errorf("capturing the screen: %s", cli.FirstLine(stderr.String(), err.Error()))
 	}
 	if err := os.WriteFile(path, picture, 0o644); err != nil {
 		return err
@@ -157,6 +184,9 @@ func (s *Session) where() string {
 // act runs one action as film.Set.Act describes, settling after it, and
 // prints what it did.
 func act(s *Session, say string, stdout io.Writer, do func() (string, error)) (int, error) {
+	if err := s.filming(); err != nil {
+		return exitcode.Usage, err
+	}
 	did, code, err := s.set().Act(say, do, func() { s.settle(time.Now(), settleQuiet, settleMax) })
 	if err == nil && did != "" {
 		fmt.Fprintln(stdout, did)
@@ -244,10 +274,11 @@ func Drag(s *Session, x1, y1, x2, y2, say string, stdout io.Writer) (int, error)
 		return exitcode.Usage, err
 	}
 	return act(s, say, stdout, func() (string, error) {
-		if err := move(s, from, "sleep", "0.2", "mousedown", "1"); err != nil {
+		pointer, err := s.pointer()
+		if err != nil {
 			return "", err
 		}
-		_, err := s.xdotool(append(glide(from, to), "sleep", "0.12", "mouseup", "1")...)
+		_, err = s.xdotool(dragChain(pointer, from, to)...)
 		return fmt.Sprintf("dragged from %s,%s to %s,%s", x1, y1, x2, y2), err
 	})
 }

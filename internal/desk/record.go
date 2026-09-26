@@ -1,14 +1,17 @@
 package desk
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/prime-radiant-inc/proving-it-works/internal/cli"
 	"github.com/prime-radiant-inc/proving-it-works/internal/film"
 )
 
@@ -39,7 +42,10 @@ func Record(dir string, log io.Writer) error {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	cmd := s.command(ctx, s.capture(ctx, 0)...)
+	// A shell prints ffmpeg's process id on the display's side, then becomes
+	// ffmpeg: through a wrapper, ending the local command does not end it
+	// there, so stop kills it by that id.
+	cmd := s.command(ctx, append([]string{"sh", "-c", `echo $$; exec "$@"`, "sh"}, s.capture(ctx, 0)...)...)
 	var stderr strings.Builder
 	cmd.Stderr = io.MultiWriter(log, &stderr)
 	out, err := cmd.StdoutPipe()
@@ -55,8 +61,15 @@ func Record(dir string, log io.Writer) error {
 	}
 	shots := make(chan shot, 16)
 	ended := make(chan error, 1)
+	stream := bufio.NewReader(out)
+	line, err := stream.ReadString('\n')
+	pid := strings.TrimSpace(line)
+	if _, convErr := strconv.Atoi(pid); err != nil || convErr != nil {
+		cmd.Wait()
+		return reel.End(film.Now(), "the capture failed: "+cli.FirstLine(stderr.String(), "it did not start"))
+	}
 	go func() {
-		p := newPictures(out)
+		p := newPictures(stream)
 		for {
 			picture, err := p.next()
 			if err != nil {
@@ -76,18 +89,19 @@ func Record(dir string, log io.Writer) error {
 			}
 		case <-tick.C:
 			if _, err := os.Stat(filepath.Join(s.Dir, "stop")); err == nil {
-				// Ending the capture closes its pipe; through a wrapper,
-				// ffmpeg on the far side stops at its next write.
+				// stop returns once this recorder is done, so the capture
+				// must be gone by then, not merely told to go
+				s.run(10*time.Second, "kill", pid)
+				cli.WaitFor(5*time.Second, func() bool {
+					_, err := s.run(10*time.Second, "kill", "-0", pid)
+					return err != nil
+				})
 				cancel()
 				return reel.End(film.Now(), "")
 			}
 		case err := <-ended:
 			cmd.Wait()
-			reason := strings.TrimSpace(stderr.String())
-			if reason == "" {
-				reason = err.Error()
-			}
-			return reel.End(film.Now(), "the capture ended: "+reason)
+			return reel.End(film.Now(), "the capture failed: "+cli.FirstLine(stderr.String(), err.Error()))
 		}
 	}
 }
