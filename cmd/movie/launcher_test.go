@@ -292,3 +292,25 @@ func TestLauncherAsksWindowsForItsNativeArchitecture(t *testing.T) {
 		t.Error("did not ask for movie-windows-arm64.exe")
 	}
 }
+
+// MOVIE_FROM_SOURCE=1 runs this checkout's source, built once and rebuilt
+// only when the source changes, for testing unreleased work.
+func TestLauncherBuildsTheCheckoutFromSource(t *testing.T) {
+	needSh(t)
+	if testing.Short() {
+		t.Skip("builds movie from source")
+	}
+	r := &fakeRelease{cache: t.TempDir()}
+	launcher := filepath.Join(repoRoot(t), binDir, "movie")
+	first := r.run(t, exec.Command("sh", launcher, "help"), []string{"MOVIE_FROM_SOURCE=1"})
+	if first.code != 0 || !strings.Contains(first.stdout, "Exit codes:") || !strings.Contains(first.stderr, "building "+hostReleaseName()) {
+		t.Fatalf("exit %d\n%s", first.code, first.stderr)
+	}
+	if _, err := os.Stat(filepath.Join(r.cache, "proving-it-works", "source", hostReleaseName())); err != nil {
+		t.Fatalf("not built into the source cache: %v", err)
+	}
+	again := r.run(t, exec.Command("sh", launcher, "help"), []string{"MOVIE_FROM_SOURCE=1"})
+	if again.code != 0 || strings.Contains(again.stderr, "building") {
+		t.Errorf("rebuilt unchanged source (exit %d):\n%s", again.code, again.stderr)
+	}
+}
