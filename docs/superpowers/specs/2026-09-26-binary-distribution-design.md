@@ -102,8 +102,9 @@ which SKILL.md's PowerShell line will say.
 
 `script/release VERSION`, run from `main`:
 
-1. Refuses unless the tree is clean, `HEAD` equals `origin/main` after a
-   fetch, and `vVERSION` exists neither locally nor on `origin`.
+1. Refuses unless the branch is `main`, the tree is clean, `origin/main`
+   (after a fetch) is an ancestor of `HEAD`, so the push will fast-forward,
+   and `vVERSION` exists neither locally nor on `origin`.
 2. Builds the six binaries with `script/build-binaries` into a temporary
    directory (already reproducible: pinned toolchain, `-trimpath`,
    `-buildvcs=false`), and writes `BIN/checksums.txt` from them.
