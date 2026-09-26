@@ -133,3 +133,23 @@ func TestReelKeepsOnlyChangedPictures(t *testing.T) {
 		t.Fatalf("frame 2 holds %q", data)
 	}
 }
+
+func TestSayEndsABeatWithoutAnAction(t *testing.T) {
+	s := openSet(t)
+	s.Act("", ok, func() {})
+	if err := s.Say("It worked."); err != nil {
+		t.Fatal(err)
+	}
+	s.Act("", ok, func() {})
+	beats, _ := ReadBeats(s.Dir)
+	if !slices.Equal(beats, []Beat{{Take: 1, Say: "It worked."}}) {
+		t.Fatalf("beats %v", beats)
+	}
+	if st, _ := s.state(); st.Take != 2 {
+		t.Fatalf("take %d, want 2: the action after a say starts a new take", st.Take)
+	}
+	s.SetFilm(false)
+	if err := s.Say("Unseen."); err == nil || !strings.Contains(err.Error(), "filming is off") {
+		t.Fatalf("say while filming is off: %v", err)
+	}
+}

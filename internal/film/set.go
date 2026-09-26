@@ -144,8 +144,7 @@ func (s Set) Act(say string, do func() (string, error), settle func()) (string, 
 		return "", exitcode.Usage, err
 	}
 	if say != "" && !st.Film {
-		return "", exitcode.Usage, errors.New("filming is off, so nothing would show what --say describes: " +
-			"film on, then --say on an action that shows the result (wait for it, if need be)")
+		return "", exitcode.Usage, errFilmOff
 	}
 	if st.CutPending {
 		if err := s.cut(&st); err != nil {
@@ -175,13 +174,29 @@ func (s Set) Act(say string, do func() (string, error), settle func()) (string, 
 		return "", exitcode.Usage, actErr
 	}
 	if say != "" {
-		if err := AppendBeat(s.Dir, Beat{Take: st.Take, Say: say}); err != nil {
-			return "", exitcode.Usage, err
-		}
-		st.CutPending = true
-		if err := s.setState(st); err != nil {
+		if err := s.Say(say); err != nil {
 			return "", exitcode.Usage, err
 		}
 	}
 	return did, exitcode.OK, nil
 }
+
+// Say ends a beat now: the sentence narrates everything filmed since the
+// previous beat ended, and the next action starts a new take.
+func (s Set) Say(sentence string) error {
+	st, err := s.state()
+	if err != nil {
+		return err
+	}
+	if !st.Film {
+		return errFilmOff
+	}
+	if err := AppendBeat(s.Dir, Beat{Take: st.Take, Say: sentence}); err != nil {
+		return err
+	}
+	st.CutPending = true
+	return s.setState(st)
+}
+
+var errFilmOff = errors.New("filming is off, so nothing would show what the sentence describes: " +
+	"film on, then narrate an action that shows the result (wait for it, if need be)")

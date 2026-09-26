@@ -167,6 +167,7 @@ func Shot(s *Session, path string, stdout io.Writer) error {
 	if err := os.WriteFile(path, picture, 0o644); err != nil {
 		return err
 	}
+	s.stamp("looked")
 	fmt.Fprintf(stdout, "%s (%dx%d), pointer at %s\n", path, s.Region.W, s.Region.H, s.where())
 	return nil
 }
@@ -186,15 +187,46 @@ func (s *Session) where() string {
 
 // act runs one action as film.Set.Act describes, settling after it, and
 // prints what it did.
-func act(s *Session, say string, stdout io.Writer, do func() (string, error)) (int, error) {
+func act(s *Session, stdout io.Writer, do func() (string, error)) (int, error) {
 	if err := s.filming(); err != nil {
 		return exitcode.Usage, err
 	}
-	did, code, err := s.set().Act(say, do, func() { s.settle(time.Now(), settleQuiet, settleMax) })
+	did, code, err := s.set().Act("", do, func() { s.settle(time.Now(), settleQuiet, settleMax) })
+	s.stamp("acted")
 	if err == nil && did != "" {
 		fmt.Fprintln(stdout, did)
 	}
 	return code, err
+}
+
+// stamp records when the agent last did something of this kind: acted, or
+// looked with a shot.
+func (s *Session) stamp(kind string) {
+	os.WriteFile(filepath.Join(s.Dir, kind), []byte(strconv.FormatFloat(film.Now(), 'f', 6, 64)), 0o644)
+}
+
+// when is the time of the last stamp of this kind, or 0 if there is none.
+func (s *Session) when(kind string) float64 {
+	data, err := os.ReadFile(filepath.Join(s.Dir, kind))
+	if err != nil {
+		return 0
+	}
+	t, _ := strconv.ParseFloat(string(data), 64)
+	return t
+}
+
+// Say ends a beat: the sentence narrates everything filmed since the last
+// say. The picture is the only way to know what an action did, so say is
+// refused until a shot has been taken since the last action.
+func Say(s *Session, sentence string) error {
+	if err := s.filming(); err != nil {
+		return err
+	}
+	if s.when("looked") <= s.when("acted") {
+		return errors.New("look at the result before narrating it: take a shot (movie desk shot SESSION), " +
+			"read it, and say only what it shows")
+	}
+	return s.set().Say(sentence)
 }
 
 // Settling: an action is over once no new picture has arrived for
@@ -238,18 +270,18 @@ func move(s *Session, to image.Point, then ...string) error {
 }
 
 // Move glides the pointer to a filmed point.
-func Move(s *Session, x, y, say string, stdout io.Writer) (int, error) {
+func Move(s *Session, x, y string, stdout io.Writer) (int, error) {
 	to, err := s.point(x, y)
 	if err != nil {
 		return exitcode.Usage, err
 	}
-	return act(s, say, stdout, func() (string, error) {
+	return act(s, stdout, func() (string, error) {
 		return fmt.Sprintf("moved to %s,%s", x, y), move(s, to)
 	})
 }
 
 // Click glides to a filmed point and clicks there.
-func Click(s *Session, x, y string, right, double bool, say string, stdout io.Writer) (int, error) {
+func Click(s *Session, x, y string, right, double bool, stdout io.Writer) (int, error) {
 	to, err := s.point(x, y)
 	if err != nil {
 		return exitcode.Usage, err
@@ -261,13 +293,13 @@ func Click(s *Session, x, y string, right, double bool, say string, stdout io.Wr
 	if double {
 		name = "double-" + name
 	}
-	return act(s, say, stdout, func() (string, error) {
+	return act(s, stdout, func() (string, error) {
 		return fmt.Sprintf("%s at %s,%s", name, x, y), move(s, to, press(button, double)...)
 	})
 }
 
 // Drag presses at one filmed point, glides to another, and releases.
-func Drag(s *Session, x1, y1, x2, y2, say string, stdout io.Writer) (int, error) {
+func Drag(s *Session, x1, y1, x2, y2 string, stdout io.Writer) (int, error) {
 	from, err := s.point(x1, y1)
 	if err != nil {
 		return exitcode.Usage, err
@@ -276,7 +308,7 @@ func Drag(s *Session, x1, y1, x2, y2, say string, stdout io.Writer) (int, error)
 	if err != nil {
 		return exitcode.Usage, err
 	}
-	return act(s, say, stdout, func() (string, error) {
+	return act(s, stdout, func() (string, error) {
 		pointer, err := s.pointer()
 		if err != nil {
 			return "", err
@@ -287,17 +319,17 @@ func Drag(s *Session, x1, y1, x2, y2, say string, stdout io.Writer) (int, error)
 }
 
 // Key presses keys, a quarter second apart.
-func Key(s *Session, keys []string, say string, stdout io.Writer) (int, error) {
-	return act(s, say, stdout, func() (string, error) {
+func Key(s *Session, keys []string, stdout io.Writer) (int, error) {
+	return act(s, stdout, func() (string, error) {
 		_, err := s.xdotool(append([]string{"key", "--delay", "250"}, keys...)...)
 		return "pressed " + strings.Join(keys, " "), err
 	})
 }
 
 // Type types text at human pace into whatever has the focus.
-func Type(s *Session, text, say string, stdout io.Writer) (int, error) {
+func Type(s *Session, text string, stdout io.Writer) (int, error) {
 	pace := film.TypingPace(len([]rune(text)))
-	return act(s, say, stdout, func() (string, error) {
+	return act(s, stdout, func() (string, error) {
 		_, err := s.xdotool("type", "--delay", strconv.Itoa(int(pace.Milliseconds())), "--", text)
 		return fmt.Sprintf("typed %q", text), err
 	})
@@ -305,8 +337,8 @@ func Type(s *Session, text, say string, stdout io.Writer) (int, error) {
 
 // Wait waits until the picture holds still for quiet, counted from now,
 // within timeout: the app finishing slow work.
-func Wait(s *Session, quiet, timeout time.Duration, say string, stdout io.Writer) (int, error) {
-	return act(s, say, stdout, func() (string, error) {
+func Wait(s *Session, quiet, timeout time.Duration, stdout io.Writer) (int, error) {
+	return act(s, stdout, func() (string, error) {
 		if !s.settle(time.Now(), quiet, timeout) {
 			return "", film.Failed{Msg: fmt.Sprintf("the picture did not hold still for %s within %s", quiet, timeout)}
 		}

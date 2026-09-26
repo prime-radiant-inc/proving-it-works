@@ -17,18 +17,20 @@ const usage = `usage: movie desk VERB SESSION ...
         film an X display, or one window's area, with ffmpeg; drive it with xdotool
   shot SESSION [PNG]
         save what is filmed now (SESSION/shot.png) to look at; prints its size and the pointer
-  move SESSION X Y [--say "narration"]
+  move SESSION X Y
         glide the pointer to X,Y
-  click SESSION X Y [--right] [--double] [--say "narration"]
+  click SESSION X Y [--right] [--double]
         glide to X,Y and click
-  drag SESSION X1 Y1 X2 Y2 [--say "narration"]
+  drag SESSION X1 Y1 X2 Y2
         press at X1,Y1, glide to X2,Y2, release
-  key SESSION KEY... [--say "narration"]
+  key SESSION KEY...
         press keys, by xdotool's names: Return, Escape, ctrl+s, shift+a
-  type SESSION 'text' [--say "narration"]
+  type SESSION 'text'
         type at human pace into whatever has the focus
-  wait SESSION [--quiet 1] [--timeout 60] [--say "narration"]
+  wait SESSION [--quiet 1] [--timeout 60]
         wait until the picture holds still for --quiet seconds
+  say SESSION "sentence"
+        end a beat, narrated by the sentence; refused until a shot shows the result
   cut SESSION
         end this take, holding its result, and start the next
   film SESSION on|off
@@ -39,9 +41,9 @@ const usage = `usage: movie desk VERB SESSION ...
         render the takes again from the recording, even after stop
 
 X and Y are pixels of what is filmed: read them off a shot. Start the app
-yourself, on the display. --say ends a beat: the sentence narrates
-everything since the last --say, over this action's result; it needs
-filming on. With -- docker exec CONTAINER, the display, the app, xdotool,
+yourself, on the display. Look, act, look: after an action, take a shot and
+read it, then say what it shows. The sentence narrates everything since the
+last say; it needs filming on. With -- docker exec CONTAINER, the display, the app, xdotool,
 and ffmpeg live in the container, and the recording stays here.
 `
 
@@ -81,10 +83,6 @@ func dispatch(verb string, args []string, stdout, stderr io.Writer) (int, error)
 	fs := flag.NewFlagSet("movie desk "+verb, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() { fmt.Fprint(stderr, usage) }
-	var say *string
-	if slices.Contains([]string{"move", "click", "drag", "key", "type", "wait"}, verb) {
-		say = fs.String("say", "", "narration for the beat this action ends")
-	}
 	switch verb {
 	case "start":
 		var wrapper []string
@@ -119,7 +117,7 @@ func dispatch(verb string, args []string, stdout, stderr io.Writer) (int, error)
 		if err != nil {
 			return exitcode.Usage, err
 		}
-		return Move(s, pos[0], pos[1], *say, stdout)
+		return Move(s, pos[0], pos[1], stdout)
 	case "click":
 		right := fs.Bool("right", false, "click the right button")
 		double := fs.Bool("double", false, "double-click")
@@ -127,25 +125,25 @@ func dispatch(verb string, args []string, stdout, stderr io.Writer) (int, error)
 		if err != nil {
 			return exitcode.Usage, err
 		}
-		return Click(s, pos[0], pos[1], *right, *double, *say, stdout)
+		return Click(s, pos[0], pos[1], *right, *double, stdout)
 	case "drag":
 		s, pos, err := needs(fs, args, 5, false, "SESSION X1 Y1 X2 Y2")
 		if err != nil {
 			return exitcode.Usage, err
 		}
-		return Drag(s, pos[0], pos[1], pos[2], pos[3], *say, stdout)
+		return Drag(s, pos[0], pos[1], pos[2], pos[3], stdout)
 	case "key":
 		s, pos, err := needs(fs, args, 2, true, "SESSION and at least one KEY")
 		if err != nil {
 			return exitcode.Usage, err
 		}
-		return Key(s, pos, *say, stdout)
+		return Key(s, pos, stdout)
 	case "type":
 		s, pos, err := needs(fs, args, 2, false, "SESSION and text")
 		if err != nil {
 			return exitcode.Usage, err
 		}
-		return Type(s, pos[0], *say, stdout)
+		return Type(s, pos[0], stdout)
 	case "wait":
 		quiet := fs.Float64("quiet", 1, "seconds the picture must hold still")
 		timeout := fs.Float64("timeout", 60, "seconds to wait")
@@ -153,7 +151,13 @@ func dispatch(verb string, args []string, stdout, stderr io.Writer) (int, error)
 		if err != nil {
 			return exitcode.Usage, err
 		}
-		return Wait(s, seconds(*quiet), seconds(*timeout), *say, stdout)
+		return Wait(s, seconds(*quiet), seconds(*timeout), stdout)
+	case "say":
+		s, pos, err := needs(fs, args, 2, false, "SESSION and a sentence")
+		if err != nil {
+			return exitcode.Usage, err
+		}
+		return exitcode.OK, Say(s, pos[0])
 	case "cut":
 		s, _, err := needs(fs, args, 1, false, "SESSION")
 		if err != nil {

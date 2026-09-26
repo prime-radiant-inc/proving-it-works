@@ -401,7 +401,7 @@ never cut, and each take holds its final picture at least 1.5 s.
 
 `movie desk` films a desktop app on an X11 display the way `browse` films a
 web page: the agent looks (`shot`), acts with real pointer and key input,
-and narrates with `--say`; a detached recorder films the screen. Linux and
+and narrates what it saw with `say`; a detached recorder films the screen. Linux and
 X11 only for now: moving the real pointer on macOS needs native code the
 static release build cannot carry.
 
@@ -415,9 +415,16 @@ static release build cannot carry.
 | `key SESSION KEY...` | press keys, xdotool names (`ctrl+s`, `Return`, `shift+a`) | 0 |
 | `type SESSION 'text'` | type at human pace | 0 |
 | `wait SESSION [--quiet 1] [--timeout 60]` | wait until the picture holds still for `--quiet` seconds | 0, 1 timed out |
+| `say SESSION "sentence"` | end a beat; refused unless a `shot` was taken after the last action | 0, 2 |
 | `cut`, `film`, `stop SESSION OUTDIR`, `render SESSION OUTDIR` | as in `browse` | 0 |
 
-Every action takes `--say`, as in `browse`. Coordinates are pixels of what
+Narration is its own verb, not `--say` on an action as in `term` and
+`browse`: a desktop app's result is only a picture, and a sentence given
+with the action is written before anyone has seen it. In testing, Haiku
+clicked seven buttons blind with every `--say` written in advance and
+shipped "the calculator shows 408" over a display reading 264. `say`
+requires a `shot` since the last action (desk stamps both), so the agent
+has at least looked. Coordinates are pixels of what
 is filmed, so a point read off a `shot` is the point to click; with
 `--window` they are relative to the window. The app is the agent's to
 start (on the display, in the container); `desk` films and drives it.

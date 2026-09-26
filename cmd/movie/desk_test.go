@@ -93,14 +93,23 @@ func TestDeskDrivesAndFilmsADesktopApp(t *testing.T) {
 	}
 
 	r = mustDesk(t, dir, "move", session, "20", "20")
-	mustDesk(t, dir, "type", session, "12*34=", "--say", "We multiply twelve by thirty-four.")
+	mustDesk(t, dir, "type", session, "12*34=")
+	// narrating a result nobody has looked at is refused
+	r = runMovie(t, dir, "desk", "say", session, "It shows 408.")
+	if r.code != 2 || !strings.Contains(r.stderr, "take a shot") {
+		t.Errorf("say before looking: code %d\n%s", r.code, r.stderr)
+	}
+	mustDesk(t, dir, "shot", session)
+	mustDesk(t, dir, "say", session, "We multiply twelve by thirty-four.")
 	r = mustDesk(t, dir, "click", session, "30", "10")
 	if !strings.Contains(r.stdout, "clicked at 30,10") {
 		t.Errorf("click printed %q", r.stdout)
 	}
 	mustDesk(t, dir, "drag", session, "30", "10", "60", "12")
 	mustDesk(t, dir, "key", session, "Escape")
-	mustDesk(t, dir, "wait", session, "--quiet", "0.5", "--timeout", "5", "--say", "Then clear it.")
+	mustDesk(t, dir, "wait", session, "--quiet", "0.5", "--timeout", "5")
+	mustDesk(t, dir, "shot", session)
+	mustDesk(t, dir, "say", session, "Then clear it.")
 
 	takes := filepath.Join(dir, "takes")
 	r = mustDesk(t, dir, "stop", session, takes)
@@ -145,9 +154,9 @@ func TestDeskRefusesWhatItCannotDo(t *testing.T) {
 	if r.code != 2 || !strings.Contains(r.stderr, "outside the filmed 800x600") {
 		t.Errorf("a click off the display: code %d\n%s", r.code, r.stderr)
 	}
-	r = runMovie(t, dir, "desk", "cut", session, "--say", "nothing")
+	r = runMovie(t, dir, "desk", "click", session, "5", "5", "--say", "nothing")
 	if r.code != 2 {
-		t.Errorf("--say on a verb that is not an action: code %d", r.code)
+		t.Errorf("--say, which desk does not have: code %d", r.code)
 	}
 	r = mustDesk(t, dir, "stop", session, filepath.Join(dir, "takes"))
 	if strings.Contains(r.stdout, "WARN") {
@@ -180,7 +189,7 @@ func TestDeskNoticesADeadCamera(t *testing.T) {
 	session := startDesk(t, dir, wrapper)
 	inBox(wrapper, "pkill", "-f", "x11grab")
 	time.Sleep(time.Second)
-	r = runMovie(t, dir, "desk", "click", session, "10", "10", "--say", "Filmed by nobody.")
+	r = runMovie(t, dir, "desk", "click", session, "10", "10")
 	if r.code != 2 || !strings.Contains(r.stderr, "the recorder has stopped") {
 		t.Errorf("an action after the capture died: code %d\n%s%s", r.code, r.stdout, r.stderr)
 	}

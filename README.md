@@ -64,7 +64,7 @@ Piper (see Requirements):
 | `movie check movie.mp4` | the gate, alone |
 | `movie term ...` | films a terminal session, one narrated beat per `--say`, and writes the scene file |
 | `movie browse ...` | films a web app driven in headless Chrome, with a drawn cursor, one narrated beat per `--say`, and writes the scene file |
-| `movie desk ...` | films a desktop app on X11 (Linux, or Xvfb in a container) driven with real pointer and keys, one narrated beat per `--say`, and writes the scene file |
+| `movie desk ...` | films a desktop app on X11 (Linux, or Xvfb in a container) driven with real pointer and keys, one narrated beat per `say` (allowed only after a `shot`), and writes the scene file |
 
 ### `movie check`
 

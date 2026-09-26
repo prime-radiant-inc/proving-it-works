@@ -11,7 +11,9 @@ $m desk start snow/ --display :99 --title "A snowman, built in Blender" -- docke
 $m desk shot snow/                      # look, then act, then look again
 $m desk click snow/ 660 420
 $m desk key snow/ x
-$m desk click snow/ 633 420 --say "I select the cube and delete it."
+$m desk click snow/ 633 420
+$m desk shot snow/                      # read it: is the cube gone?
+$m desk say snow/ "I select the cube and delete it."
 ...
 $m desk stop snow/ snow-takes/
 $m build snow-takes/scenes.yaml snowman.mp4
