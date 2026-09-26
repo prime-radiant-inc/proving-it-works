@@ -149,7 +149,14 @@ func TestDeskRefusesWhatItCannotDo(t *testing.T) {
 	if r.code != 2 {
 		t.Errorf("--say on a verb that is not an action: code %d", r.code)
 	}
-	mustDesk(t, dir, "stop", session, filepath.Join(dir, "takes"))
+	r = mustDesk(t, dir, "stop", session, filepath.Join(dir, "takes"))
+	if strings.Contains(r.stdout, "WARN") {
+		t.Errorf("stop warned:\n%s", r.stdout)
+	}
+	r = runMovie(t, dir, "desk", "click", session, "5", "5")
+	if r.code != 2 || !strings.Contains(r.stderr, "this session is stopped") {
+		t.Errorf("an action after stop: code %d\n%s", r.code, r.stderr)
+	}
 	r = runMovie(t, dir, "desk", "stop", session, filepath.Join(dir, "again"))
 	if r.code != 2 || !strings.Contains(r.stderr, "already stopped") {
 		t.Errorf("a second stop: code %d\n%s", r.code, r.stderr)

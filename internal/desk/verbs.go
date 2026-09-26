@@ -138,8 +138,11 @@ func (s *Session) filming() error {
 	}
 	if n := len(frames); n > 0 && frames[n-1].End {
 		reason := frames[n-1].Reason
-		if n == 1 {
+		switch {
+		case n == 1:
 			return errors.New(reason)
+		case reason == "":
+			return errors.New("this session is stopped: start a new one")
 		}
 		return fmt.Errorf("the recorder has stopped (%s): stop this session and start a new one", reason)
 	}

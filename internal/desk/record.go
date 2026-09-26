@@ -89,13 +89,18 @@ func Record(dir string, log io.Writer) error {
 			}
 		case <-tick.C:
 			if _, err := os.Stat(filepath.Join(s.Dir, "stop")); err == nil {
-				// stop returns once this recorder is done, so the capture
-				// must be gone by then, not merely told to go
-				s.run(10*time.Second, "kill", pid)
-				cli.WaitFor(5*time.Second, func() bool {
-					_, err := s.run(10*time.Second, "kill", "-0", pid)
-					return err != nil
-				})
+				// Stop returns once this recorder is done, so the capture must
+				// be gone by then, not merely told to go. The shell's own kill
+				// needs no procps. Waiting on the command reaps a local ffmpeg,
+				// and a docker exec returns once the process in it has exited.
+				s.run(10*time.Second, "sh", "-c", `kill "$1"`, "sh", pid)
+				exited := make(chan struct{})
+				go func() { cmd.Wait(); close(exited) }()
+				select {
+				case <-exited:
+				case <-time.After(5 * time.Second):
+					fmt.Fprintln(log, "the capture did not exit within 5 s of being killed")
+				}
 				cancel()
 				return reel.End(film.Now(), "")
 			}
