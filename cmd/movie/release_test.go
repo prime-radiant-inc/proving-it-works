@@ -285,3 +285,30 @@ func TestReleaseDryRunCommitsTheVersionAndChecksums(t *testing.T) {
 		t.Error("a dry run pushed")
 	}
 }
+
+// A release can be run again: after a dry run, or after a push that failed,
+// the release commit is reused rather than refused as "nothing to commit".
+// And the next release works once VERSION exists and carries the old one.
+func TestReleaseRunsAgainAndReleasesNextVersions(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds the six release binaries")
+	}
+	if _, err := exec.LookPath("everyharness"); err != nil && os.Getenv("EVERYHARNESS") == "" {
+		t.Skip("needs everyharness on PATH or EVERYHARNESS=/path/to/everyharness/dist/cli.js")
+	}
+	dir := releaseClone(t)
+	dry := []string{"RELEASE_DRY_RUN=1"}
+	if got := runRelease(t, dir, dry, "9.9.9"); got.code != 0 {
+		t.Fatalf("first run: exit %d\n%s", got.code, got.stderr)
+	}
+	release := git(t, dir, "rev-parse", "HEAD")
+	if got := runRelease(t, dir, dry, "9.9.9"); got.code != 0 || git(t, dir, "rev-parse", "HEAD") != release {
+		t.Fatalf("second run of 9.9.9: exit %d, want 0 reusing the release commit\n%s", got.code, got.stderr)
+	}
+	if got := runRelease(t, dir, dry, "9.9.10"); got.code != 0 {
+		t.Fatalf("the next version: exit %d\n%s%s", got.code, got.stdout, got.stderr)
+	}
+	if data, _ := os.ReadFile(filepath.Join(dir, binDir, "VERSION")); string(data) != "9.9.10\n" {
+		t.Errorf("VERSION holds %q", data)
+	}
+}

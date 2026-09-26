@@ -18,6 +18,32 @@ function Fail([string]$message) {
     exit 2
 }
 
+# Remove-EmptyDirectory removes a directory only when nothing is in it: a
+# leftover or another run's download may be, and removing a directory with
+# contents would stop to ask for confirmation.
+function Remove-EmptyDirectory([string]$path) {
+    if (-not (Get-ChildItem -LiteralPath $path -Force -ErrorAction SilentlyContinue)) {
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# Quote-Argument quotes one argument for a Windows command line, so the
+# program's argument parser gets it back exactly (CommandLineToArgvW rules).
+function Quote-Argument([string]$arg) {
+    if ($arg -ne '' -and $arg -notmatch '[\s"]') { return $arg }
+    $quoted = '"'
+    $slashes = 0
+    foreach ($c in $arg.ToCharArray()) {
+        if ($c -eq '\') { $slashes++; continue }
+        if ($c -eq '"') { $quoted += ('\' * (2 * $slashes + 1)) + '"' }
+        else { $quoted += ('\' * $slashes) + $c }
+        $slashes = 0
+    }
+    $quoted + ('\' * (2 * $slashes)) + '"'
+}
+
+$argv = $args
+
 $arch = $env:PROCESSOR_ARCHITEW6432
 if (-not $arch) { $arch = $env:PROCESSOR_ARCHITECTURE }
 $name = if ($arch -eq 'ARM64') { 'movie-windows-arm64.exe' } else { 'movie-windows-amd64.exe' }
@@ -51,7 +77,7 @@ if (-not (Test-Path -LiteralPath $bin)) {
         Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $tmp
     } catch {
         Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath $dir -Force -ErrorAction SilentlyContinue
+        Remove-EmptyDirectory $dir
         Fail ("could not download $url`n" +
             "  Fetch it another way and put it at $bin`n" +
             "  Its SHA-256 must be $want.")
@@ -59,7 +85,7 @@ if (-not (Test-Path -LiteralPath $bin)) {
     $got = (Get-FileHash -Algorithm SHA256 -LiteralPath $tmp).Hash.ToLower()
     if ($got -ne $want) {
         Remove-Item -LiteralPath $tmp -Force
-        Remove-Item -LiteralPath $dir -Force -ErrorAction SilentlyContinue
+        Remove-EmptyDirectory $dir
         Fail "$url has SHA-256 $got, but checksums.txt says $want; not running it"
     }
     # another first run may have installed it meanwhile; either copy is verified
@@ -74,7 +100,12 @@ if (-not (Test-Path -LiteralPath $bin)) {
         Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# A native program's stderr must not become a terminating error.
-$ErrorActionPreference = 'Continue'
-& $bin @args
-exit $LASTEXITCODE
+# PowerShell 5.1's own call operator drops empty arguments and splits ones
+# with quotes, so build movie's command line and start it directly; it
+# shares this console's input and output.
+$start = New-Object System.Diagnostics.ProcessStartInfo $bin
+$start.Arguments = (@(foreach ($a in $argv) { Quote-Argument $a })) -join ' '
+$start.UseShellExecute = $false
+$movie = [System.Diagnostics.Process]::Start($start)
+$movie.WaitForExit()
+exit $movie.ExitCode

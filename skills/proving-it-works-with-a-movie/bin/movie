@@ -71,9 +71,12 @@ else
 fi
 cache=$root/proving-it-works
 if ! mkdir -p "$cache" 2>/dev/null || [ ! -w "$cache" ]; then
-  cache=${TMPDIR:-/tmp}/proving-it-works
+  # the temp directory is shared, so this user's cache there is private:
+  # another user must not be able to plant a binary where it is trusted
+  cache=${TMPDIR:-/tmp}/proving-it-works-$(id -u)
   echo "movie: cannot write to $root; caching in $cache instead" >&2
-  mkdir -p "$cache" || fail "cannot create $cache"
+  mkdir -p "$cache" 2>/dev/null && [ -O "$cache" ] && chmod 700 "$cache" ||
+    fail "cannot use $cache: it must be a directory this user owns"
 fi
 
 if [ "${MOVIE_FROM_SOURCE:-}" = 1 ]; then
@@ -129,11 +132,12 @@ if [ ! -f "$bin" ]; then
   # another first run may have installed it meanwhile; either copy is verified
   mv -f "$tmp" "$bin" 2>/dev/null || rm -f "$tmp"
   [ -f "$bin" ] || fail "could not install $bin"
-  # older releases' binaries are no longer needed
+  # older releases' binaries are no longer needed; one still in use (a
+  # running .exe on Windows) is left for a later install to remove
   for old in "$cache"/*; do
     b=${old##*/}
     if [ "$b" != "$want" ] && [ ${#b} -eq 64 ] && ! printf '%s' "$b" | grep -q '[^0-9a-f]'; then
-      rm -rf "$old"
+      rm -rf "$old" 2>/dev/null || true
     fi
   done
 fi

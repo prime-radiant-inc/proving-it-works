@@ -47,7 +47,8 @@ else
 fi
 
 out=$(mktemp -d)
-trap 'rm -rf "$out"' EXIT
+check=$(mktemp -d)
+trap 'rm -rf "$out" "$check"' EXIT
 bash script/build-binaries "$out"
 (
   cd "$out"
@@ -61,7 +62,14 @@ bash script/build-binaries "$out"
 printf '%s\n' "$version" > "$bin/VERSION"
 git add -u
 git add "$bin/VERSION" "$bin/checksums.txt"
-git commit -q -m "Release $version"
+if git diff --cached --quiet; then
+  # run again after a dry run or a failed push: the release commit is here
+  [[ $(git log -1 --format=%s) == "Release $version" ]] ||
+    fail "nothing changed, and HEAD is not the release commit for $version"
+  echo "release: reusing the release commit for $version"
+else
+  git commit -q -m "Release $version"
+fi
 
 if [[ ${RELEASE_DRY_RUN:-} == 1 ]]; then
   echo "dry run: committed release $version locally; nothing tagged, pushed, or published"
@@ -69,20 +77,24 @@ if [[ ${RELEASE_DRY_RUN:-} == 1 ]]; then
 fi
 
 # Publish so that no one can download from a release main does not name:
-# the release stays a draft until main is pushed, and is deleted if that
-# push fails.
+# the release stays a draft until main is pushed, and it and its tag are
+# deleted if anything fails before that.
 git tag "$tag"
 git push -q origin "$tag"
-gh release create "$tag" --draft --verify-tag --title "$tag" --notes "movie $version" "$out"/movie-*
+if ! gh release create "$tag" --draft --verify-tag --title "$tag" --notes "movie $version" "$out"/movie-*; then
+  gh release delete "$tag" --yes --cleanup-tag 2> /dev/null || git push -q origin ":refs/tags/$tag"
+  git tag -d "$tag"
+  fail "creating the draft release failed, so its tag is deleted and nothing public changed: fix the cause, then release again"
+fi
 if ! git push -q origin main; then
   gh release delete "$tag" --yes --cleanup-tag
   git tag -d "$tag"
-  fail "pushing main failed, so the draft release and its tag are deleted; the release commit is still here: pull, then release again"
+  fail "pushing main failed, so the draft release and its tag are deleted; the release commit is still here: git pull --rebase, then release again"
 fi
-gh release edit "$tag" --draft=false
+gh release edit "$tag" --draft=false ||
+  fail "main is pushed, but $tag is still a draft, so the launchers cannot download it: publish it with  gh release edit $tag --draft=false"
 
 # Check what users will download against what was committed.
-check=$(mktemp -d)
 while read -r sum name; do
   curl -fsSL -o "$check/$name" "https://github.com/prime-radiant-inc/proving-it-works/releases/download/$tag/$name"
   if command -v sha256sum > /dev/null 2>&1; then
@@ -92,5 +104,4 @@ while read -r sum name; do
   fi
   [[ $got == "$sum" ]] || fail "the published $name has SHA-256 $got, not $sum"
 done < "$bin/checksums.txt"
-rm -rf "$check"
 echo "released $tag: https://github.com/prime-radiant-inc/proving-it-works/releases/tag/$tag"

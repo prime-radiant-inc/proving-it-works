@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -222,8 +224,51 @@ func TestLauncherCachesInTheTempDirectoryWhenTheCacheIsReadOnly(t *testing.T) {
 	if got.code != 0 || !strings.Contains(got.stderr, "cannot write to "+r.cache) {
 		t.Fatalf("exit %d:\n%s", got.code, got.stderr)
 	}
-	if _, err := os.Stat(filepath.Join(tmp, "proving-it-works", r.want, hostReleaseName())); err != nil {
-		t.Errorf("not cached in the temp directory: %v", err)
+	// the temp directory is shared, so the cache there is this user's alone:
+	// another user could otherwise plant a binary where the launcher trusts it
+	private := filepath.Join(tmp, fmt.Sprintf("proving-it-works-%d", os.Getuid()))
+	if _, err := os.Stat(filepath.Join(private, r.want, hostReleaseName())); err != nil {
+		t.Errorf("not cached in this user's temp directory: %v", err)
+	}
+	if info, err := os.Stat(private); err != nil {
+		t.Errorf("no private cache: %v", err)
+	} else if info.Mode().Perm() != 0o700 {
+		t.Errorf("%s has mode %v, want 0700: private to this user", private, info.Mode().Perm())
+	}
+}
+
+// An older release that cannot be removed does not undo a good install.
+func TestLauncherRunsEvenWhenAnOldVersionCannotBeRemoved(t *testing.T) {
+	needSh(t)
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs a directory this user cannot delete from")
+	}
+	body := hostBinary(t)
+	r := newFakeRelease(t, sha256Hex(body), body, 0)
+	locked := filepath.Join(r.cache, "proving-it-works", sha256Hex([]byte("an older release")), "locked")
+	if err := os.MkdirAll(locked, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeText(t, filepath.Join(locked, "f"), "x")
+	if err := os.Chmod(locked, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(locked, 0o700) })
+	if got := r.sh(t, nil, "help"); got.code != 0 || !strings.Contains(got.stdout, "Exit codes:") {
+		t.Fatalf("exit %d\n%s", got.code, got.stderr)
+	}
+}
+
+// Arguments reach movie exactly: embedded quotes, and empty arguments.
+func TestLauncherPassesQuotesAndEmptyArgumentsThrough(t *testing.T) {
+	needSh(t)
+	body := hostBinary(t)
+	r := newFakeRelease(t, sha256Hex(body), body, 0)
+	for _, arg := range []string{`say "hi" \\ \"`, ""} {
+		got := r.sh(t, nil, arg)
+		if want := fmt.Sprintf("unknown command %q", arg); got.code != 2 || !strings.Contains(got.stderr, want) {
+			t.Errorf("want %s, got exit %d:\n%s", want, got.code, got.stderr)
+		}
 	}
 }
 
@@ -289,9 +334,9 @@ func TestLauncherAsksWindowsForItsNativeArchitecture(t *testing.T) {
 	}
 	r := newFakeRelease(t, sha256Hex([]byte("x")), nil, 0)
 	writeText(t, filepath.Join(r.bin, "checksums.txt"), r.want+"  movie-windows-arm64.exe\n")
-	r.sh(t, []string{"PROCESSOR_ARCHITECTURE=ARM64", "PROCESSOR_ARCHITEW6432="}, "help")
+	got := r.sh(t, []string{"PROCESSOR_ARCHITECTURE=ARM64", "PROCESSOR_ARCHITEW6432="}, "help")
 	if _, ok := r.requested.Load("/v" + testVersion + "/movie-windows-arm64.exe"); !ok {
-		t.Error("did not ask for movie-windows-arm64.exe")
+		t.Errorf("did not ask for movie-windows-arm64.exe (exit %d):\n%s", got.code, got.stderr)
 	}
 }
 
@@ -407,5 +452,39 @@ func TestPowerShellLauncherFirstRunsAtOnceAllSucceed(t *testing.T) {
 	}
 	if left := filesUnder(t, r.cache); len(left) != 1 || left[0] != r.installed() {
 		t.Errorf("cache holds %v, want only %s", left, r.installed())
+	}
+}
+
+// movie.ps1 hands movie its arguments exactly, which PowerShell 5.1's own
+// native-command call does not: it drops empty ones and splits on quotes.
+func TestPowerShellLauncherPassesQuotesAndEmptyArgumentsThrough(t *testing.T) {
+	needPowerShell(t)
+	body := hostBinary(t)
+	r := newFakeRelease(t, sha256Hex(body), body, 0)
+	for _, arg := range []string{`say "hi" \\ \"`, ""} {
+		got := r.powershell(t, nil, arg)
+		if want := fmt.Sprintf("unknown command %q", arg); got.code != 2 || !strings.Contains(got.stderr, want) {
+			t.Errorf("want %s, got exit %d:\n%s", want, got.code, got.stderr)
+		}
+	}
+}
+
+// A download interrupted earlier leaves a temporary file behind; a failed
+// download must still end with the fetch instructions, not a prompt.
+func TestPowerShellLauncherFailsCleanlyBesideALeftoverDownload(t *testing.T) {
+	needPowerShell(t)
+	want := sha256Hex(hostBinary(t))
+	r := newFakeRelease(t, want, nil, 0)
+	dir := filepath.Join(r.cache, "proving-it-works", want)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeText(t, filepath.Join(dir, "."+hostReleaseName()+".999"), "partial")
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", filepath.Join(r.bin, "movie.ps1"), "help")
+	got := r.run(t, cmd, nil)
+	if got.code != 2 || !strings.Contains(got.stderr, "SHA-256 must be "+want) {
+		t.Fatalf("exit %d:\n%s", got.code, got.stderr)
 	}
 }
