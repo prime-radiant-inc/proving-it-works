@@ -26,7 +26,9 @@ func clipName(engine, voice, model, text string) string {
 
 // Clip returns an accepted clip of text in dir, reusing one that exists. A
 // clip file exists only once accepted: attempts are written to a temporary
-// name and renamed into place after passing the gate.
+// name and renamed into place after passing the gate. Files an engine writes
+// beside an attempt, such as the MP3 polly keeps, share its stem and follow
+// it: renamed with the clip, removed with a failed attempt.
 func Clip(dir string, e Engine, voice, text string) (path string, rendered bool, err error) {
 	path = filepath.Join(dir, clipName(e.Name(), voice, e.Model(voice), text))
 	if _, err := os.Stat(path); err == nil {
@@ -51,11 +53,23 @@ func Clip(dir string, e Engine, voice, text string) (path string, rendered bool,
 				gated = true
 			}
 		}
+		stem := strings.TrimSuffix(tmp.Name(), ".wav")
+		sidecars, _ := filepath.Glob(stem + ".*")
 		if err != nil {
-			os.Remove(tmp.Name())
+			for _, f := range sidecars {
+				os.Remove(f)
+			}
 			reasons = append(reasons, fmt.Sprintf("attempt %d: %v", attempt, err))
 			lastErr = err
 			continue
+		}
+		for _, f := range sidecars {
+			if f == tmp.Name() {
+				continue
+			}
+			if err := os.Rename(f, strings.TrimSuffix(path, ".wav")+strings.TrimPrefix(f, stem)); err != nil {
+				return "", false, err
+			}
 		}
 		if err := os.Rename(tmp.Name(), path); err != nil {
 			return "", false, err

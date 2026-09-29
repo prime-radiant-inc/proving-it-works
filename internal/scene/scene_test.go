@@ -92,7 +92,7 @@ scenes:
 	for _, want := range []string{
 		"size must have even width and height",
 		"fps must be a positive whole number",
-		`engine must be one of auto, openai, openai-chat, piper`,
+		`engine must be one of auto, openai, openai-chat, piper, polly`,
 		`unknown top-level key "colour"`,
 		`scene 1: id "Bad_ID" must match`,
 		"scene two: needs exactly one of card, image, frames, movie (found 2)",

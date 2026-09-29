@@ -130,10 +130,10 @@ func Load(path string) (*File, error) {
 	}
 	if v, ok := raw["engine"]; ok {
 		s, _ := v.(string)
-		if slices.Contains([]string{"auto", "openai", "openai-chat", "piper"}, s) {
+		if slices.Contains([]string{"auto", "openai", "openai-chat", "piper", "polly"}, s) {
 			f.Engine = s
 		} else {
-			p = append(p, "engine must be one of auto, openai, openai-chat, piper")
+			p = append(p, "engine must be one of auto, openai, openai-chat, piper, polly")
 		}
 	}
 	if v, ok := raw["voice"]; ok {

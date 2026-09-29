@@ -21,6 +21,7 @@ type Engine interface {
 }
 
 // Resolve picks the engine: auto means openai when a key exists, else piper.
+// polly is only ever chosen by name: it bills an AWS account.
 // piper never looks up a key: openAIKey can shell out to the llm CLI, which
 // has nothing to do with a build that never touches OpenAI.
 func Resolve(name string) (Engine, error) {
@@ -39,6 +40,8 @@ func Resolve(name string) (Engine, error) {
 		return openAI{key: key, chat: name == "openai-chat"}, nil
 	case "piper":
 		return piper{}, nil
+	case "polly":
+		return newPolly()
 	}
 	return nil, errors.New("unknown engine " + name)
 }

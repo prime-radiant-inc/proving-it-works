@@ -127,6 +127,7 @@ It runs on every harness below; each one reads the same skill from `skills/`.
 
 - `ffmpeg` and `ffprobe`
 - For the keyless voice: Piper (`uv tool install piper-tts`), see the skill's `narrating.md`
+- For Amazon Polly voices: AWS credentials in the environment, see the skill's `narrating.md`
 - For filming web apps: Chrome, Chromium, or Edge (Playwright only for what `movie browse` cannot drive)
 - tmux, for filming terminals
 

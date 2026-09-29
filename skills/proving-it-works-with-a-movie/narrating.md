@@ -14,10 +14,11 @@ file's `engine`:
 | `openai` | OpenAI's speech endpoint | Reads exactly what it is sent. The safe default. |
 | `openai-chat` | A chat model with audio output | Best prosody, but it ad-libs ("Sure, here it is:"). Gated: its own transcript must match the script word for word, or the clip is rejected and retried once. That proves what the model says it said, not what is in the audio. |
 | `piper` | A local neural voice, free and offline | **Mispronounces** unusual names rather than dropping them. |
+| `polly` | Amazon Polly's generative voices, in many languages; never picked by `auto` | AWS documents that a generative voice can **cut a word off** mid-sentence, and nothing in `build` hears it: listen. The voices also change as AWS updates them. |
 
 Local TTS engines other than these can drop out-of-vocabulary words
 silently with a zero exit code ("every eval on the shelf" became "every on
-the shelf"). That is why `build` offers only these three.
+the shelf"). That is why `build` offers only these.
 
 ## The local voice
 
@@ -31,6 +32,53 @@ uvx --from piper-tts python -m piper.download_voices --data-dir ~/.cache/piper-v
 `build` looks for voices in `PIPER_VOICE_DIR`, default
 `~/.cache/piper-voices`, and names the exact command if something is
 missing. It never downloads anything itself.
+
+## Amazon Polly
+
+`engine: polly` reads the standard AWS variables: `AWS_ACCESS_KEY_ID`,
+`AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` when the keys are temporary,
+and `AWS_REGION` (else `AWS_DEFAULT_REGION`, else `us-east-1`).
+
+The keys need a user allowed to list voices and synthesize, and nothing
+else. In the IAM console:
+
+1. Users → Create user, with no console access.
+2. Permissions → Add permissions → Create inline policy → JSON, and paste:
+
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [
+       {
+         "Effect": "Allow",
+         "Action": ["polly:DescribeVoices", "polly:SynthesizeSpeech"],
+         "Resource": "*"
+       }
+     ]
+   }
+   ```
+
+   `DescribeVoices` cannot be scoped to a resource, so `"*"` is required.
+   Without it, `build` stops before rendering with a 403 naming the action.
+3. Security credentials → Create access key → "Application running outside
+   AWS", and export the pair:
+
+   ```bash
+   export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=eu-central-1
+   ```
+
+A policy change can take a few seconds to reach every region.
+
+`voice` is a Polly voice ID, default `Ruth`. Generative voices are not in
+every region: before rendering anything, `build` checks the voice exists
+there and, when it does not, lists the ones that do. For example
+`voice: Sergio` (Castilian Spanish) is in `us-east-1` and `eu-central-1`,
+but not in `eu-west-2`.
+
+A scene's narration may be at most 3000 characters, Polly's limit per
+request. Each clip's MP3, as Polly returned it, is kept next to its WAV:
+it is what was paid for, and asking again later may not give back the
+same take.
 
 ## Listen to it
 

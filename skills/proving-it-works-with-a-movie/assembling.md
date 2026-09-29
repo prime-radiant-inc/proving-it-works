@@ -9,8 +9,8 @@ ffmpeg traps worth knowing when you make the pieces yourself.
 ```yaml
 size: 1920x1080              # default; width and height must be even
 fps: 30                      # default
-engine: auto                 # auto | openai | openai-chat | piper (narrating.md)
-voice: nova                  # default: nova for openai*, en_US-lessac-medium for piper
+engine: auto                 # auto | openai | openai-chat | piper | polly (narrating.md)
+voice: nova                  # default: nova for openai*, en_US-lessac-medium for piper, Ruth for polly
 
 scenes:
   - id: title                # [a-z0-9][a-z0-9-]*, unique

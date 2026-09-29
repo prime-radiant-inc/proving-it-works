@@ -122,3 +122,31 @@ func TestResolvePiperNeverLooksUpAKey(t *testing.T) {
 		t.Fatalf("%v %v", e, err)
 	}
 }
+
+// sidecarEngine writes a second file next to each attempt, as polly does
+// with the MP3 it paid for.
+type sidecarEngine struct{ scriptedEngine }
+
+func (e *sidecarEngine) Synthesize(text, voice, wav string) (string, error) {
+	if err := os.WriteFile(strings.TrimSuffix(wav, ".wav")+".mp3", []byte("ID3"), 0o644); err != nil {
+		return "", err
+	}
+	return e.scriptedEngine.Synthesize(text, voice, wav)
+}
+
+func TestAcceptedClipKeepsItsSidecarUnderItsOwnName(t *testing.T) {
+	dir := t.TempDir()
+	e := &sidecarEngine{scriptedEngine{name: "polly", attempts: []scriptedAttempt{
+		{err: errors.New("HTTP 500")}, {}}}}
+	wav, _, err := Clip(dir, e, "v", "hello there")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(strings.TrimSuffix(wav, ".wav") + ".mp3"); err != nil {
+		t.Fatal("the sidecar was not renamed with the clip")
+	}
+	left, _ := filepath.Glob(filepath.Join(dir, ".attempt-*"))
+	if len(left) != 0 {
+		t.Fatalf("attempt files left behind: %v", left)
+	}
+}
